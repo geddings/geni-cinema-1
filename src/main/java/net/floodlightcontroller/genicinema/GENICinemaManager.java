@@ -32,6 +32,7 @@ import org.projectfloodlight.openflow.types.OFBufferId;
 import org.projectfloodlight.openflow.types.OFGroup;
 import org.projectfloodlight.openflow.types.OFPort;
 import org.projectfloodlight.openflow.types.TableId;
+import org.projectfloodlight.openflow.types.TransportPort;
 import org.restlet.data.ClientInfo;
 import org.restlet.resource.Finder;
 import org.slf4j.Logger;
@@ -41,6 +42,7 @@ import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.MappingJsonFactory;
+import com.sun.corba.se.spi.ior.MakeImmutable;
 import com.sun.corba.se.spi.legacy.connection.GetEndPointInfoAgainException;
 
 import net.floodlightcontroller.core.FloodlightContext;
@@ -55,7 +57,9 @@ import net.floodlightcontroller.core.module.IFloodlightModule;
 import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.firewall.IFirewallService;
 import net.floodlightcontroller.genicinema.Channel.ChannelBuilder;
+import net.floodlightcontroller.genicinema.EgressStream.EgressStreamBuilder;
 import net.floodlightcontroller.genicinema.IngressStream.IngressStreamBuilder;
+import net.floodlightcontroller.genicinema.VideoSocket.VideoSocketBuilder;
 import net.floodlightcontroller.genicinema.web.GENICinemaWebRoutable;
 import net.floodlightcontroller.genicinema.web.JsonStrings;
 import net.floodlightcontroller.restserver.IRestApiService;
@@ -77,7 +81,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	 */
 
 	/* All available Channels per aggregate per VLC Server */
-	private static Map<String, Map<IPv4Address, Channel>> channelsPerAggregate;
+	private static Map<String, Map<Server, Channel>> channelsPerAggregate;
 
 	/* Ongoing Egress Streams */
 	private static Map<String, ArrayList<EgressStream>> egressStreamsPerAggregate;
@@ -92,7 +96,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	 * Perhaps should use UUID or something stronger. */
 	private static int clientIdGenerator = 0;
 	private static int channelIdGenerator = 0;
-	
+
 	/*
 	 * IFloodlightModule implementation
 	 */
@@ -137,7 +141,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * Initialize all class variables.
 		 */
 		aggregates = new ArrayList<Aggregate>(1);
-		channelsPerAggregate = new HashMap<String, Map<IPv4Address, Channel>>(2); // for initial test, start of with a predefined two channels
+		channelsPerAggregate = new HashMap<String, Map<Server, Channel>>(2); // for initial test, start of with a predefined two channels
 		ingressStreamsPerAggregate = new HashMap<String, ArrayList<IngressStream>>(2); // --> need two ingress streams
 		egressStreamsPerAggregate = new HashMap<String, ArrayList<EgressStream>>(254); // "large" number of clients possible
 
@@ -201,7 +205,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	public boolean isCallbackOrderingPostreq(OFType type, String name) {
 		return false;
 	}
-	
+
 	@Override
 	public net.floodlightcontroller.core.IListener.Command receive(
 			IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
@@ -289,12 +293,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		MappingJsonFactory f = new MappingJsonFactory();
 		JsonParser jp;
 
-		IngressStreamBuilder isb = new IngressStreamBuilder();
 		ChannelBuilder cb = new ChannelBuilder();
-
-		/*
-		 * TODO Set the client IP from the HTTP packet.
-		 */
 
 		int reqFields = 0;
 		try {
@@ -356,13 +355,13 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 
 		//TODO this is a naive approach as-is. The following functions need to be non-dependent.
 		//i.e. we need an algorithm to select a Gateway, sort Node, and Server.
-		
+
 		/*
 		 * Try to determine where the client is, and based on
 		 * location, assign the client to a nearby ingress GCGW.
 		 */
-		Gateway clientGW = findBestIngressGateway(IPv4Address.of(clientIP));		
-		if (clientGW == null) {
+		Gateway ingressGW = findBestIngressGateway(IPv4Address.of(clientIP));		
+		if (ingressGW == null) {
 			log.error("Could not find an available GENI Cinema Ingress Gateway for the client with IP {}", clientIP);
 			return "";
 		}
@@ -371,22 +370,50 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * Check to see if there are any VLC servers with sockets available
 		 * that are reachable from the Gateway.
 		 */
-		
-		Server videoHostServer = getVideoHostServer()
-		
-		VLCStreamServer vlcStreamServer = getIngressVLCStreamServer(clientGW);		
-		if (vlcStreamServer ==  null) {
+		Server hostServer = findBestHostServer(ingressGW.getPrivateIP()); // TODO get VLC server based on private IP. Is this the best idea?
+
+		VLCStreamServer hostServerVLCSS = allocateVLCSSServerResource(hostServer);		
+		if (hostServerVLCSS ==  null) {
 			log.error("Could not find an available VLCStreamServer (i.e. an available VLC listen socket) for the client to stream to.");
 			return "";
 		}
-		
-		Server videoHostServer = getServer(IPv4Address privateIP)
-		
-		Node sortNode = getAvailableSortNode(vlcStreamServer.ge, clientGW);
-		
-		insertEgressStreamFlows(stream);
 
+		/*
+		 * Create the video-producing client. TODO not sure how to get src tp port info...
+		 */
+		VideoSocketBuilder vsb = new VideoSocketBuilder();
+		vsb.setIP(IPv4Address.of(clientIP))
+			.setPort(TransportPort.NONE)
+			.setProtocol(IpProtocol.TCP);
 
+		IngressStreamBuilder isb = new IngressStreamBuilder();
+		isb.setGateway(ingressGW)
+			.setServer(hostServerVLCSS)
+			.setClient(vsb.build());
+		
+		/* Update Manager with new IngressStream */
+		if (!addIngressStream(isb.build())) {
+			log.error("Could not add new IngressStream to the Manager!");
+			return "";
+		}
+
+		Channel theChannel = 
+			cb.setGroup(OFGroup.ZERO)
+				.setHostIP(hostServerVLCSS.getEgress().getIP())
+				.setHostNode(hostServer.getOVSNode())
+				.setHostUDP(hostServerVLCSS.getEgress().getPort())
+				.setLive(true)
+				.setSortNode(null)
+				.setId(generateChannelId())
+				.build();
+
+		/*
+		 * Update Manager with new Channel
+		 */
+		if (!addChannel(theChannel)) {
+			log.error("Could not add new Channel to the Manager!");
+			return "";
+		}
 		return "";
 	}
 
@@ -398,18 +425,18 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 
 	@Override
 	public String watchChannel(String json, ClientInfo clientInfo) {
-		
+
 		/*
 		 * Determine a Gateway where the client can attach and watch.
 		 */
 		findBestEgressGateway(IPv4Address.of(clientInfo.getAddress())
-		
-		/*
-		 * Insert required flows along the path we just determined (VLCS w/OVS, OVS Node, and VLCS @GCGW)
-		 */
-		insertEgressStreamFlows(stream);
-		
-		
+
+				/*
+				 * Insert required flows along the path we just determined (VLCS w/OVS, OVS Node, and VLCS @GCGW)
+				 */
+				insertEgressStreamFlows(stream);
+
+
 		return null;
 	}
 
@@ -423,6 +450,46 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	 * GENICinemaManager helper functions
 	 */
 
+	/**
+	 * Takes a new Channel and updates the Manager appropriately.
+	 * 
+	 * @param newChannel, The recently-added Channel
+	 * @return, true upon success; false upon failure
+	 */
+	private boolean addChannel(Channel newChannel) {
+		Aggregate theAggregate = lookupAggregate(newChannel);
+		
+		/*
+		 * Add the Channel to the list.
+		 */
+		if (!channelsPerAggregate.get(theAggregate.getName()).contains(newChannel)) {
+			return false;
+		}
+		
+	}
+	
+	/**
+	 * Takes a new IngressStream and updates the Manager appropriately.
+	 * 
+	 * @param newIngressStream, The recently-added IngressStream
+	 * @return, true upon success; false upon failure
+	 */
+	private boolean addIngressStream(IngressStream newIngressStream) {
+		Aggregate theAggregate = lookupAggregate(newIngressStream);
+		
+		/*
+		 * Add the IngressStream to the list.
+		 */
+		if (!ingressStreamsPerAggregate.containsKey(theAggregate.getName()) {
+			return false;
+		} else if (ingressStreamsPerAggregate.get(theAggregate.getName()).contains(newIngressStream)) {
+			return false;
+		} else {
+			ingressStreamsPerAggregate.get(theAggregate.getName()).add(newIngressStream);
+			return true;
+		}
+	}
+	
 	/**
 	 * Use the client's IP to try and determine where it is, and
 	 * thus it's closest ingress Gateway. Load-balancing, in addition
@@ -454,13 +521,42 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	}
 
 	/**
-	 * Based on the Gateway assigned, find a suitable VLCS to which
-	 * a video stream can be sent to from the Gateway.
-	 * @param ingressGateway
-	 * @return
+	 * Based on the Gateway or Server assigned, try to allocate in/out sockets
+	 * on the VLCS. Supply the Gateway if the VLCStreamServer should be located
+	 * on that Gateway. Alternatively, supply the Server if the VLCStreamServer
+	 * should be located on the Server. In either case, supply the other
+	 * parameter as null. If both Gateway and Server are non-null, this is an 
+	 * error condition and null will be returned.
+	 * 
+	 * @param egressGateway, The output GCGW where the client would like to connect.
+	 * @param hostServer, The host VLCS the ingress stream should be stored on.
+	 * 
+	 * @return non-null upon success; null if invalid parameters or no resources available.
 	 */
-	private VLCStreamServer getIngressVLCStreamServer(Gateway ingressGateway) {
+	private VLCStreamServer allocateVLCSSResource(Gateway egressGW, Server hostServer) {
 		return null;
+	}
+
+	/**
+	 * a.k.a. allocateVLCSSResource(egressGW, null)
+	 * Based on the Gateway assigned, try to allocate in/out sockets on the VLCS.
+	 * 
+	 * @param egressGW, The output GCGW where the client would like to connect.
+	 * @return non-null upon success; null if no resources available.
+	 */
+	private VLCStreamServer allocateVLCSSGatewayResource(Gateway egressGW) {
+		return allocateVLCSSResource(egressGW, null);
+	}
+
+	/**
+	 * a.k.a. allocateVLCSSResource(null, hostServer)
+	 * Based on the Server assigned, try to allocate in/out sockets on the VLCS.
+	 * 
+	 * @param hostServer, The host VLCS the ingress stream should be stored on.
+	 * @return non-null upon success; null if no resources available.
+	 */
+	private VLCStreamServer allocateVLCSSServerResource(Server hostServer) {
+		return allocateVLCSSResource(null, hostServer);
 	}
 
 
@@ -488,10 +584,10 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	 * 
 	 * @return The next integer for a client. Will be unique (within reason).
 	 */
-	private int newClientId() {
+	private int generateClientId() {
 		return ++clientIdGenerator;
 	}
-	
+
 	/**
 	 * For use when connecting a new Channel. Will always
 	 * return a "new" integer that has not been assigned
@@ -499,7 +595,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	 * 
 	 * @return The next integer for a Channel. Will be unique (within reason).
 	 */
-	private int newChannelId() {
+	private int generateChannelId() {
 		return ++channelIdGenerator;
 	}
 
@@ -569,11 +665,11 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * Also only need to assign it to an OFGroup if someone isn't watching.
 		 */
 		if (!stream.getChannel().getDemand()) {
-			
+
 			/* *******************************************
 			 * FIRST THE SERVER OVS NODE'S ALLOW/DENY FLOW
 			 * *******************************************/
-			
+
 			factory = switchService.getSwitch(stream.getChannel().getHostNode().getSwitchDpid()).getOFFactory();
 
 			/*
@@ -603,11 +699,11 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 							.setExact(MatchField.UDP_SRC, stream.getChannel().getHostUDP())
 							.setExact(MatchField.IN_PORT, stream.getChannel().getHostNode().getIngressPort())
 							.build())
-					.setBufferId(OFBufferId.NO_BUFFER)
-					.setOutPort(stream.getChannel().getHostNode().getEgressPort())
-					.setPriority(FlowModUtils.PRIORITY_MAX)
-					.setInstructions(instructionList)
-					.build();
+							.setBufferId(OFBufferId.NO_BUFFER)
+							.setOutPort(stream.getChannel().getHostNode().getEgressPort())
+							.setPriority(FlowModUtils.PRIORITY_MAX)
+							.setInstructions(instructionList)
+							.build();
 
 			log.debug("Writing OFFlowAdd to enable Channel {} on UDP port {} out of the VLCS: " + enableFlow.toString(),
 					stream.getChannel().getId(), stream.getChannel().getHostUDP().toString());
@@ -639,17 +735,17 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 							.setExact(MatchField.UDP_SRC, stream.getChannel().getHostUDP())
 							.setExact(MatchField.IN_PORT, stream.getChannel().getSortNode().getIngressPort())
 							.build())
-					.setBufferId(OFBufferId.NO_BUFFER)
-					.setOutGroup(stream.getChannel().getGroup())
-					.setPriority(FlowModUtils.PRIORITY_MAX)
-					.setInstructions(instructionList)
-					.build(); /* Don't set the table-id --> will use default table */
-			
+							.setBufferId(OFBufferId.NO_BUFFER)
+							.setOutGroup(stream.getChannel().getGroup())
+							.setPriority(FlowModUtils.PRIORITY_MAX)
+							.setInstructions(instructionList)
+							.build(); /* Don't set the table-id --> will use default table */
+
 			log.debug("Writing OFFlowAdd to send Channel {} on UDP port {} to OFGroup #" + stream.getChannel().getGroup().getGroupNumber() + " : " + toGroupFlow.toString(),
 					stream.getChannel().getId(), stream.getChannel().getHostUDP().toString());
 
 			switchService.getSwitch(stream.getChannel().getSortNode().getSwitchDpid()).write(enableFlow);
-			
+
 		} // END IF DEMAND == FALSE (initial setup for Channel)
 
 		/* ***************************************
@@ -658,18 +754,18 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * new bucket list to be added to the 
 		 * OFGroup.
 		 * **************************************/
-		
+
 		factory = switchService.getSwitch(stream.getChannel().getSortNode().getSwitchDpid()).getOFFactory();
-		
+
 		//TODO assume right now that the VLCS already sent with the correct MAC and IP for the GCGW
 		ArrayList<OFAction> bucketActions = new ArrayList<OFAction>(2);
 		bucketActions.add(factory.actions().setField(factory.oxms().udpDst(stream.getGateway().getIngress().getPort()))); 
 		bucketActions.add(factory.actions().output(stream.getChannel().getSortNode().getEgressPort(), Integer.MAX_VALUE));
-		
+
 		OFBucket bucket = factory.buildBucket()
 				.setActions(bucketActions)
 				.build();
-		
+
 		/*
 		 * Get the current list of Channel viewers/clients and add this client.
 		 */
@@ -680,7 +776,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				.setGroupType(OFGroupType.ALL)
 				.setBuckets(stream.getChannel().getBucketList())
 				.build();
-		
+
 		log.debug("Writing OFGroupMod to send Channel {} on UDP port {} from OFGroup #" + stream.getChannel().getGroup().getGroupNumber() + " : " + groupMod.toString(),
 				stream.getChannel().getId(), stream.getChannel().getHostUDP().toString());
 

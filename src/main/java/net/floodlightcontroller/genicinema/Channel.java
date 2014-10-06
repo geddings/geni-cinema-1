@@ -329,7 +329,7 @@ public class Channel {
 					|| this.b_viewPassword == null || this.b_adminPassword == null
 					|| this.b_id == -1 || this.b_ipSource == null
 					|| this.b_udpSource == null || this.b_hostNode == null
-					|| this.b_sortNode == null || this.b_group == null
+					/*|| this.b_sortNode == null || this.b_group == null  When Channel is created, a sort Node and OFGroup will not be assigned yet; only when a viewer connects */
 					|| this.b_bucketList == null) {
 				throw new BuilderException("All components of " + this.getClass().getSimpleName() + " must be non-null: " + this.toString());
 			}
