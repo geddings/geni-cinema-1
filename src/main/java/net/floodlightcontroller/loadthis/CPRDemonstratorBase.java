@@ -1,3 +1,6 @@
+package net.floodlightcontroller.loadthis;
+
+
 /**
  *    Copyright 2011, Big Switch Networks, Inc.
  *    Originally created by David Erickson, Stanford University
@@ -15,12 +18,11 @@
  *    under the License.
  **/
 
-package net.floodlightcontroller.routing;
 
 import java.io.IOException;
-import java.util.EnumSet;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
@@ -37,19 +39,19 @@ import net.floodlightcontroller.core.util.AppCookie;
 import net.floodlightcontroller.debugcounter.IDebugCounterService;
 import net.floodlightcontroller.devicemanager.IDeviceService;
 import net.floodlightcontroller.devicemanager.SwitchPort;
+import net.floodlightcontroller.linkdiscovery.ILinkDiscoveryService;
 import net.floodlightcontroller.packet.IPacket;
-import net.floodlightcontroller.routing.IRoutingService;
+import net.floodlightcontroller.routing.ForwardingBase;
 import net.floodlightcontroller.routing.IRoutingDecision;
+import net.floodlightcontroller.routing.IRoutingService;
 import net.floodlightcontroller.routing.Route;
+import net.floodlightcontroller.routing.RoutingDecision;
 import net.floodlightcontroller.topology.ITopologyService;
 import net.floodlightcontroller.topology.NodePortTuple;
-import net.floodlightcontroller.util.MatchUtils;
 import net.floodlightcontroller.util.OFMessageDamper;
 import net.floodlightcontroller.util.TimedCache;
 
 import org.projectfloodlight.openflow.protocol.OFFlowMod;
-import org.projectfloodlight.openflow.protocol.match.Match;
-import org.projectfloodlight.openflow.protocol.match.MatchField;
 import org.projectfloodlight.openflow.protocol.OFFlowModCommand;
 import org.projectfloodlight.openflow.protocol.OFMessage;
 import org.projectfloodlight.openflow.protocol.OFPacketIn;
@@ -58,6 +60,8 @@ import org.projectfloodlight.openflow.protocol.OFType;
 import org.projectfloodlight.openflow.protocol.OFVersion;
 import org.projectfloodlight.openflow.protocol.action.OFAction;
 import org.projectfloodlight.openflow.protocol.action.OFActionOutput;
+import org.projectfloodlight.openflow.protocol.match.Match;
+import org.projectfloodlight.openflow.protocol.match.MatchField;
 import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.MacAddress;
 import org.projectfloodlight.openflow.types.OFBufferId;
@@ -72,7 +76,8 @@ import org.slf4j.LoggerFactory;
  * decision.
  */
 @LogMessageCategory("Flow Programming")
-public abstract class ForwardingBase implements IOFMessageListener {
+public abstract class CPRDemonstratorBase
+    implements IOFMessageListener {
 
 	protected static Logger log =
 			LoggerFactory.getLogger(ForwardingBase.class);
@@ -92,6 +97,7 @@ public abstract class ForwardingBase implements IOFMessageListener {
 	protected IRoutingService routingEngineService;
 	protected ITopologyService topologyService;
 	protected IDebugCounterService debugCounterService;
+	protected ILinkDiscoveryService linkDiscovery;
 
 	protected OFMessageDamper messageDamper;
 
@@ -102,12 +108,12 @@ public abstract class ForwardingBase implements IOFMessageListener {
 	public TimedCache<Long> broadcastCache = new TimedCache<Long>(100, 5*1000);  // 5 seconds interval;
 
 	// flow-mod - for use in the cookie
-	public static final int FORWARDING_APP_ID = 2; // TODO: This must be managed
+	public static final int CPR_DEMONSTRATOR_APP_ID = 2; // TODO: This must be managed
 	// by a global APP_ID class
 	static {
-		AppCookie.registerApp(FORWARDING_APP_ID, "Forwarding");
+		AppCookie.registerApp(CPR_DEMONSTRATOR_APP_ID, "CPRDemonstrator");
 	}
-	public static final U64 appCookie = AppCookie.makeCookie(FORWARDING_APP_ID, 0);
+	public static final U64 appCookie = AppCookie.makeCookie(CPR_DEMONSTRATOR_APP_ID, 0);
 
 	// Comparator for sorting by SwitchCluster
 	public Comparator<SwitchPort> clusterIdComparator =
@@ -143,7 +149,7 @@ public abstract class ForwardingBase implements IOFMessageListener {
 	 */
 	@Override
 	public String getName() {
-		return "forwarding";
+		return this.getClass().getCanonicalName();
 	}
 
 	/**
@@ -249,18 +255,18 @@ public abstract class ForwardingBase implements IOFMessageListener {
 			
 			OFActionOutput.Builder aob = sw.getOFFactory().actions().buildOutput();
 			List<OFAction> actions = new ArrayList<OFAction>();	
-			Match.Builder mb = MatchUtils.createRetentiveBuilder(match);
+			//Match.Builder mb = match.createBuilder();
 
 			// set input and output ports on the switch
 			OFPort outPort = switchPortList.get(indx).getPortId();
-			OFPort inPort = switchPortList.get(indx - 1).getPortId();
-			mb.setExact(MatchField.IN_PORT, inPort);
+			//OFPort inPort = switchPortList.get(indx - 1).getPortId();
+			//mb.setExact(MatchField.IN_PORT, inPort);
 			aob.setPort(outPort);
 			aob.setMaxLen(Integer.MAX_VALUE);
 			actions.add(aob.build());
 			
 			// compile
-			fmb.setMatch(mb.build()) // was match w/o modifying input port
+			fmb.setMatch(match) //mb.build()
 			.setActions(actions)
 			.setIdleTimeout(FLOWMOD_DEFAULT_IDLE_TIMEOUT)
 			.setHardTimeout(FLOWMOD_DEFAULT_HARD_TIMEOUT)
