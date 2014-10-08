@@ -12,6 +12,7 @@ import org.projectfloodlight.openflow.protocol.OFFactory;
 import org.projectfloodlight.openflow.protocol.OFFlowAdd;
 import org.projectfloodlight.openflow.protocol.OFGroupAdd;
 import org.projectfloodlight.openflow.protocol.OFGroupMod;
+import org.projectfloodlight.openflow.protocol.OFGroupModify;
 import org.projectfloodlight.openflow.protocol.OFGroupType;
 import org.projectfloodlight.openflow.protocol.OFMessage;
 import org.projectfloodlight.openflow.protocol.OFPortDesc;
@@ -771,7 +772,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		stream.getChannel().addBucket(stream.getId(), bucket);
 
-		OFGroupMod groupMod = factory.buildGroupModify()
+		OFGroupModify groupMod = factory.buildGroupModify()
 				.setGroup(stream.getChannel().getGroup())
 				.setGroupType(OFGroupType.ALL)
 				.setBuckets(stream.getChannel().getBucketList())
