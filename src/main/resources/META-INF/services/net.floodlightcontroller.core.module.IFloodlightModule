@@ -24,4 +24,5 @@ net.floodlightcontroller.forwarding.Forwarding
 net.floodlightcontroller.loadbalancer.LoadBalancer
 net.floodlightcontroller.linkdiscovery.internal.LinkDiscoveryManager
 net.floodlightcontroller.devicemanager.internal.DeviceManagerImpl
-net.floodlightcontroller.loadthis.CPRDemonstrator
+net.floodlightcontroller.arprelay.ARPRelay
+net.floodlightcontroller.genicinema.GENICinemaManager

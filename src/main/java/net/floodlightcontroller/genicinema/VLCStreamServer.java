@@ -3,10 +3,12 @@ package net.floodlightcontroller.genicinema;
 public class VLCStreamServer {
 	private VideoSocket ingress;
 	private VideoSocket egress;
+	private boolean isAvailable;
 	
-	private VLCStreamServer(VideoSocket ingress, VideoSocket egress) {
+	private VLCStreamServer(VideoSocket ingress, VideoSocket egress, boolean isAvailable) {
 		this.ingress = ingress;
 		this.egress = egress;
+		this.isAvailable = isAvailable;
 	}
 	
 	public VideoSocket getIngress() {
@@ -15,6 +17,10 @@ public class VLCStreamServer {
 	
 	public VideoSocket getEgress() {
 		return this.egress;
+	}
+	
+	public boolean isAvailable() {
+		return this.isAvailable;
 	}
 	
 	public VLCStreamServerBuilder createBuilder() {
@@ -28,6 +34,8 @@ public class VLCStreamServer {
 		.append(this.ingress.toString())
 		.append(", egress=")
 		.append(this.egress.toString())
+		.append(", available=")
+		.append(this.isAvailable)
 		.toString();
 	}
 	
@@ -38,21 +46,25 @@ public class VLCStreamServer {
 		VLCStreamServer that = (VLCStreamServer) vlcStreamServer;
 		if (!this.ingress.equals(that.ingress)) return false;
 		if (!this.egress.equals(that.egress)) return false;
+		if (this.isAvailable != that.isAvailable) return false;
 		return true;
 	}
 	
 	public static class VLCStreamServerBuilder {
 		private VideoSocket b_ingress;
 		private VideoSocket b_egress;
+		private boolean b_isAvailable;
 		
 		public VLCStreamServerBuilder() {
 			this.b_ingress = null;
 			this.b_egress = null;
+			this.b_isAvailable = true;
 		}
 		
 		private VLCStreamServerBuilder(VLCStreamServer vlcStreamServer) {
 			this.b_ingress = vlcStreamServer.ingress.createBuilder().build();
 			this.b_egress = vlcStreamServer.egress.createBuilder().build();
+			this.b_isAvailable = vlcStreamServer.isAvailable;
 		}
 		
 		public VLCStreamServerBuilder setIngress(VideoSocket ingress) {
@@ -65,6 +77,11 @@ public class VLCStreamServer {
 			return this;
 		}
 		
+		public VLCStreamServerBuilder setAvailable(boolean isAvailable) {
+			this.b_isAvailable = isAvailable;
+			return this;
+		}
+		
 		private void checkAllSet() throws BuilderException {
 			if (this.b_ingress == null || this.b_egress == null) {
 				throw new BuilderException("All components of " + this.getClass().getSimpleName() + " must be non-null: " + this.toString());
@@ -73,7 +90,7 @@ public class VLCStreamServer {
 		
 		public VLCStreamServer build() {
 			checkAllSet();
-			return new VLCStreamServer(this.b_ingress, this.b_egress);
+			return new VLCStreamServer(this.b_ingress, this.b_egress, this.b_isAvailable);
 		}
 		
 		@Override
@@ -83,6 +100,8 @@ public class VLCStreamServer {
 			.append(this.b_ingress.toString())
 			.append(", egress=")
 			.append(this.b_egress.toString())
+			.append(", egress=")
+			.append(this.b_isAvailable)
 			.toString();
 		}
 	}

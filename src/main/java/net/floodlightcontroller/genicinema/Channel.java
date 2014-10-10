@@ -5,9 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.projectfloodlight.openflow.protocol.OFBucket;
-import org.projectfloodlight.openflow.types.IPv4Address;
 import org.projectfloodlight.openflow.types.OFGroup;
-import org.projectfloodlight.openflow.types.TransportPort;
 
 /**
  * An abstraction for the components that make up
@@ -30,18 +28,13 @@ public class Channel {
 	/* The admin password */
 	private String adminPassword;
 
-	/* Where is it hosted? On which VLC backend server? */
-	private IPv4Address ipSource;	
-	/* And, on which port? (must be UDP) */
-	private TransportPort udpSource;
+	private VLCStreamServer hostServer;
+	private Server hostPhysServer;
 
 	/* Is the source present and streaming? */
 	private boolean live;
 	/* Are there any clients viewing the stream? */
 	private int demandCount;
-
-	/* The OVS at the host server */
-	private Node hostNode;
 
 	/* The OVS in the path */
 	private Node sortNode;
@@ -53,19 +46,19 @@ public class Channel {
 	private Map<Integer, OFBucket> bucketList;
 
 	private Channel(String name, String description, int id,
-			IPv4Address ipSource, TransportPort udpSource,
+			VLCStreamServer hostServer,
+			Server hostPhysServer,
 			boolean live, int demandCount,
-			Node hostNode, Node sortNode, OFGroup group,
+			Node sortNode, OFGroup group,
 			String viewPassword, String adminPassword,
 			Map<Integer, OFBucket> bucketList) {
 		this.name = name;
 		this.description = description;
 		this.id = id;
-		this.ipSource = ipSource;
-		this.udpSource = udpSource;
+		this.hostServer = hostServer;
+		this.hostPhysServer = hostPhysServer;
 		this.live = live;
 		this.demandCount = demandCount;
-		this.hostNode = hostNode;
 		this.sortNode = sortNode;
 		this.group = group;
 		this.viewPassword = viewPassword;
@@ -85,8 +78,12 @@ public class Channel {
 		return this.id;
 	}
 
-	public IPv4Address getHostIP() {
-		return this.ipSource;
+	public VLCStreamServer getHostVLCStreamServer() {
+		return this.hostServer;
+	}
+	
+	public Server getHostServer() {
+		return this.hostPhysServer;
 	}
 
 	public String getViewPassword() {
@@ -95,10 +92,6 @@ public class Channel {
 
 	public String getAdminPassword() {
 		return this.description;
-	}
-
-	public TransportPort getHostUDP() {
-		return this.udpSource;
 	}
 
 	public boolean getLive() {
@@ -111,10 +104,6 @@ public class Channel {
 
 	public int getDemandCount() {
 		return this.demandCount;
-	}
-
-	public Node getHostNode() {
-		return this.hostNode;
 	}
 
 	public Node getSortNode() {
@@ -140,14 +129,18 @@ public class Channel {
 	public void addBucket(int clientId, OFBucket bucketToAdd) {
 		Integer key = new Integer(clientId);
 		bucketList.put(key, bucketToAdd); // add/replace
+		
+		incrementDemand();
 	}
 
 	public void removeBucket(int clientId) {
 		Integer key = new Integer(clientId);
 		bucketList.remove(key); // if exists
+		
+		decrementDemand();
 	}
 
-	public int decrementDemand() {
+	private int decrementDemand() {
 		if (this.demandCount <= 0) {
 			return this.demandCount;
 		} else {
@@ -155,7 +148,7 @@ public class Channel {
 		}
 	}
 
-	public int incrementDemand() { // no bounds checking
+	private int incrementDemand() { // no bounds checking
 		return ++this.demandCount;
 	}
 
@@ -176,16 +169,14 @@ public class Channel {
 				.append(this.adminPassword)
 				.append(", id=")
 				.append(this.id)
-				.append(", host-ip=")
-				.append(this.ipSource.toString())
-				.append(", host-udp=")
-				.append(this.udpSource.toString())
+				.append(", host-vlcs-server=")
+				.append(this.hostServer.toString())
+				.append(", host-server=")
+				.append(this.hostPhysServer.toString())
 				.append(", live=")
 				.append(this.live)
 				.append(", demand=")
 				.append(this.demandCount)
-				.append(", host-node=")
-				.append(this.hostNode.toString())
 				.append(", sort-node=")
 				.append(this.sortNode.toString())
 				.append(", group=")
@@ -205,11 +196,10 @@ public class Channel {
 		if (!this.viewPassword.equals(that.viewPassword)) return false;
 		if (!this.adminPassword.equals(that.adminPassword)) return false;
 		if (this.id != that.id) return false;
-		if (!this.ipSource.equals(that.ipSource)) return false;
-		if (!this.udpSource.equals(that.udpSource)) return false;
+		if (!this.hostServer.equals(that.hostServer)) return false;
+		if (!this.hostPhysServer.equals(that.hostPhysServer)) return false;
 		if (this.live != that.live) return false;
 		if (this.demandCount != that.demandCount) return false;
-		if (!this.hostNode.equals(that.hostNode)) return false;
 		if (!this.sortNode.equals(that.sortNode)) return false;
 		if (!this.group.equals(that.group)) return false;
 		if (!this.bucketList.equals(that.bucketList)) return false;
@@ -222,11 +212,10 @@ public class Channel {
 		private int b_id;
 		private String b_viewPassword;
 		private String b_adminPassword;
-		private IPv4Address b_ipSource;	
-		private TransportPort b_udpSource;
+		private VLCStreamServer b_hostServer;
+		private Server b_hostPhysServer;
 		private boolean b_live;
 		private int b_demandCount;
-		private Node b_hostNode;
 		private Node b_sortNode;
 		private OFGroup b_group;
 		private Map<Integer, OFBucket> b_bucketList;
@@ -237,11 +226,10 @@ public class Channel {
 			b_id = -1;
 			b_viewPassword = "";
 			b_adminPassword = "";
-			b_ipSource = null;
-			b_udpSource = null;
+			b_hostServer = null;
+			b_hostPhysServer = null;
 			b_live = false;
 			b_demandCount = -1;
-			b_hostNode = null;
 			b_sortNode = null;
 			b_group = null;
 			b_bucketList = new HashMap<Integer, OFBucket>();
@@ -253,11 +241,10 @@ public class Channel {
 			b_id = channel.id;
 			b_viewPassword = channel.viewPassword;
 			b_adminPassword = channel.adminPassword;
-			b_ipSource = IPv4Address.of(channel.ipSource.getInt());
-			b_udpSource = TransportPort.of(channel.udpSource.getPort());
+			b_hostServer = channel.hostServer.createBuilder().build();
+			b_hostPhysServer = channel.hostPhysServer.createBuilder().build();
 			b_live = channel.live;
 			b_demandCount = channel.demandCount;
-			b_hostNode = channel.hostNode.createBuilder().build();
 			b_sortNode = channel.sortNode.createBuilder().build();
 			b_group = OFGroup.of(channel.group.getGroupNumber());
 			b_bucketList = new HashMap<Integer, OFBucket>(channel.bucketList);
@@ -288,23 +275,18 @@ public class Channel {
 			return this;
 		}
 
-		public ChannelBuilder setHostIP(IPv4Address host) {
-			this.b_ipSource = IPv4Address.of(host.getInt());
+		public ChannelBuilder setHostVLCStreamServer(VLCStreamServer hostServer) {
+			this.b_hostServer = hostServer.createBuilder().build();
 			return this;
 		}
-
-		public ChannelBuilder setHostUDP(TransportPort udpPort) {
-			this.b_udpSource = TransportPort.of(udpPort.getPort());
+		
+		public ChannelBuilder setHostServer(Server hostPhysServer) {
+			this.b_hostPhysServer = hostPhysServer.createBuilder().build();
 			return this;
 		}
 
 		public ChannelBuilder setLive(boolean live) {
 			this.b_live = live;
-			return this;
-		}
-
-		public ChannelBuilder setHostNode(Node host) {
-			this.b_hostNode = host.createBuilder().build();
 			return this;
 		}
 
@@ -327,8 +309,8 @@ public class Channel {
 		private void checkAllSet() throws BuilderException {
 			if (this.b_name == null || this.b_description == null
 					|| this.b_viewPassword == null || this.b_adminPassword == null
-					|| this.b_id == -1 || this.b_ipSource == null
-					|| this.b_udpSource == null || this.b_hostNode == null
+					|| this.b_id == -1 || this.b_hostServer == null
+					|| this.b_hostPhysServer == null
 					/*|| this.b_sortNode == null || this.b_group == null  When Channel is created, a sort Node and OFGroup will not be assigned yet; only when a viewer connects */
 					|| this.b_bucketList == null) {
 				throw new BuilderException("All components of " + this.getClass().getSimpleName() + " must be non-null: " + this.toString());
@@ -337,8 +319,8 @@ public class Channel {
 
 		public Channel build() {
 			checkAllSet(); // throw execption if Channel isn't complete
-			return new Channel(this.b_name, this.b_description, this.b_id, this.b_ipSource, 
-					this.b_udpSource, this.b_live, this.b_demandCount, this.b_hostNode, 
+			return new Channel(this.b_name, this.b_description, this.b_id, this.b_hostServer, 
+					this.b_hostPhysServer, this.b_live, this.b_demandCount, 
 					this.b_sortNode, this.b_group,
 					this.b_viewPassword, this.b_adminPassword,
 					this.b_bucketList);
@@ -357,16 +339,14 @@ public class Channel {
 					.append(this.b_viewPassword)
 					.append(", admin-password=")
 					.append(this.b_adminPassword)
-					.append(", host-ip=")
-					.append(this.b_ipSource.toString())
-					.append(", host-udp=")
-					.append(this.b_udpSource.toString())
+					.append(", host-vlcs-server=")
+					.append(this.b_hostServer.toString())
+					.append(", host-server=")
+					.append(this.b_hostPhysServer.toString())
 					.append(", live=")
 					.append(this.b_live)
 					.append(", demand=")
 					.append(this.b_demandCount)
-					.append(", host-node=")
-					.append(this.b_hostNode.toString())
 					.append(", sort-node=")
 					.append(this.b_sortNode.toString())
 					.append(", group=")
