@@ -11,6 +11,6 @@ public class KeepAliveGENICinemaResource extends ServerResource {
 
 	@Get
 	public String getChannels() {
-		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class)).getChannels();
+		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class.getCanonicalName())).getChannels();
 	}
 }

@@ -38,6 +38,7 @@ public class AddGENICinemaResource extends ServerResource {
 	@Post
 	public String parseAddRequest(String json) {
 		
-		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class)).addChannel(json, getRequest().getClientInfo());
+
+		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class.getCanonicalName())).addChannel(json, getRequest().getClientInfo());
 	}
 }

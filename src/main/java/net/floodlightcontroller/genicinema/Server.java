@@ -42,13 +42,41 @@ public class Server {
 	}
 	
 	@Override
-	public boolean equals(Object server) {
-		if (server == null) return false;
-		if (!(server instanceof Server)) return false;
-		Server that = (Server) server;
-		if (!this.ingressIP.equals(that.ingressIP)) return false;
-		if (!this.egressIP.equals(that.egressIP)) return false;
-		if (!this.ovs.equals(that.ovs)) return false;
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result
+				+ ((egressIP == null) ? 0 : egressIP.hashCode());
+		result = prime * result
+				+ ((ingressIP == null) ? 0 : ingressIP.hashCode());
+		result = prime * result + ((ovs == null) ? 0 : ovs.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		Server other = (Server) obj;
+		if (egressIP == null) {
+			if (other.egressIP != null)
+				return false;
+		} else if (!egressIP.equals(other.egressIP))
+			return false;
+		if (ingressIP == null) {
+			if (other.ingressIP != null)
+				return false;
+		} else if (!ingressIP.equals(other.ingressIP))
+			return false;
+		if (ovs == null) {
+			if (other.ovs != null)
+				return false;
+		} else if (!ovs.equals(other.ovs))
+			return false;
 		return true;
 	}
 	
@@ -64,23 +92,23 @@ public class Server {
 		}
 		
 		private ServerBuilder(Server server) {
-			this.b_ingressIP = IPv4Address.of(server.ingressIP.getInt());
-			this.b_egressIP = IPv4Address.of(server.egressIP.getInt());
-			this.b_ovs = server.ovs.createBuilder().build();
+			this.b_ingressIP = server.ingressIP;
+			this.b_egressIP = server.egressIP;
+			this.b_ovs = server.ovs;
 		}
 		
 		public ServerBuilder setPublicIP(IPv4Address ip) {
-			this.b_ingressIP = IPv4Address.of(ip.getInt());
+			this.b_ingressIP = ip;
 			return this;
 		}
 		
 		public ServerBuilder setPrivateIP(IPv4Address ip) {
-			this.b_egressIP = IPv4Address.of(ip.getInt());
+			this.b_egressIP = ip;
 			return this;
 		}
 		
 		public ServerBuilder setOVSNode(Node ovs) {
-			this.b_ovs = ovs.createBuilder().build();
+			this.b_ovs = ovs;
 			return this;
 		}
 		

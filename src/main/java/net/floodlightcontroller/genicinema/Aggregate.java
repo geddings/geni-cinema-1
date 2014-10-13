@@ -186,18 +186,77 @@ public class Aggregate {
 	}
 
 	@Override
-	public boolean equals(Object aggregate) {
-		if (aggregate == null) return false;
-		if (!(aggregate instanceof Aggregate)) return false;
-		Aggregate that = (Aggregate) aggregate;
-		if (!this.name.equals(that.name)) return false;
-		if (!this.description.equals(that.description)) return false;
-		if (!this.ingressGateways.equals(that.ingressGateways)) return false;
-		if (!this.egressGateways.equals(that.egressGateways)) return false;
-		if (!this.vlcsVMs.equals(that.vlcsVMs)) return false;
-		if (!this.ovsVMs.equals(that.ovsVMs)) return false;
-		if (!this.availableOFGroupsPerSortNode.equals(that.availableOFGroupsPerSortNode)) return false;
-		if (!this.isNodeConnected.equals(that.isNodeConnected)) return false;
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime
+				* result
+				+ ((availableOFGroupsPerSortNode == null) ? 0
+						: availableOFGroupsPerSortNode.hashCode());
+		result = prime * result
+				+ ((description == null) ? 0 : description.hashCode());
+		result = prime * result
+				+ ((egressGateways == null) ? 0 : egressGateways.hashCode());
+		result = prime * result
+				+ ((ingressGateways == null) ? 0 : ingressGateways.hashCode());
+		result = prime * result
+				+ ((isNodeConnected == null) ? 0 : isNodeConnected.hashCode());
+		result = prime * result + ((name == null) ? 0 : name.hashCode());
+		result = prime * result + ((ovsVMs == null) ? 0 : ovsVMs.hashCode());
+		result = prime * result + ((vlcsVMs == null) ? 0 : vlcsVMs.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		Aggregate other = (Aggregate) obj;
+		if (availableOFGroupsPerSortNode == null) {
+			if (other.availableOFGroupsPerSortNode != null)
+				return false;
+		} else if (!availableOFGroupsPerSortNode
+				.equals(other.availableOFGroupsPerSortNode))
+			return false;
+		if (description == null) {
+			if (other.description != null)
+				return false;
+		} else if (!description.equals(other.description))
+			return false;
+		if (egressGateways == null) {
+			if (other.egressGateways != null)
+				return false;
+		} else if (!egressGateways.equals(other.egressGateways))
+			return false;
+		if (ingressGateways == null) {
+			if (other.ingressGateways != null)
+				return false;
+		} else if (!ingressGateways.equals(other.ingressGateways))
+			return false;
+		if (isNodeConnected == null) {
+			if (other.isNodeConnected != null)
+				return false;
+		} else if (!isNodeConnected.equals(other.isNodeConnected))
+			return false;
+		if (name == null) {
+			if (other.name != null)
+				return false;
+		} else if (!name.equals(other.name))
+			return false;
+		if (ovsVMs == null) {
+			if (other.ovsVMs != null)
+				return false;
+		} else if (!ovsVMs.equals(other.ovsVMs))
+			return false;
+		if (vlcsVMs == null) {
+			if (other.vlcsVMs != null)
+				return false;
+		} else if (!vlcsVMs.equals(other.vlcsVMs))
+			return false;
 		return true;
 	}
 

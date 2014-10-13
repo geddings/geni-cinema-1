@@ -34,6 +34,6 @@ public class ViewGENICinemaResource extends ServerResource {
 	 */
 	@Post
 	public String parseViewRequest(String json) {
-		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class)).watchChannel(json, getRequest().getClientInfo());
+		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class.getCanonicalName())).watchChannel(json, getRequest().getClientInfo());
 	}
 }

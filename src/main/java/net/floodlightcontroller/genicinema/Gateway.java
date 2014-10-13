@@ -34,12 +34,35 @@ public class Gateway {
 	}
 	
 	@Override
-	public boolean equals(Object gateway) {
-		if (gateway == null) return false;
-		if (!(gateway instanceof Gateway)) return false;
-		Gateway that = (Gateway) gateway;
-		if (!this.publicIP.equals(that.publicIP)) return false;
-		if (!this.privateIP.equals(that.privateIP)) return false;
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result
+				+ ((privateIP == null) ? 0 : privateIP.hashCode());
+		result = prime * result
+				+ ((publicIP == null) ? 0 : publicIP.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		Gateway other = (Gateway) obj;
+		if (privateIP == null) {
+			if (other.privateIP != null)
+				return false;
+		} else if (!privateIP.equals(other.privateIP))
+			return false;
+		if (publicIP == null) {
+			if (other.publicIP != null)
+				return false;
+		} else if (!publicIP.equals(other.publicIP))
+			return false;
 		return true;
 	}
 	
@@ -53,17 +76,17 @@ public class Gateway {
 		}
 		
 		private GatewayBuilder(Gateway gateway) {
-			this.b_publicIP = IPv4Address.of(gateway.publicIP.getInt());
-			this.b_privateIP = IPv4Address.of(gateway.privateIP.getInt());
+			this.b_publicIP = gateway.publicIP;
+			this.b_privateIP = gateway.privateIP;
 		}
 		
 		public GatewayBuilder setPublicIP(IPv4Address ip) {
-			this.b_publicIP = IPv4Address.of(ip.getInt());
+			this.b_publicIP = ip;
 			return this;
 		}
 		
 		public GatewayBuilder setPrivateIP(IPv4Address ip) {
-			this.b_privateIP = IPv4Address.of(ip.getInt());
+			this.b_privateIP = ip;
 			return this;
 		}
 		

@@ -23,6 +23,6 @@ public class ModifyGENICinemaResource extends ServerResource {
 	explanation="An invalid request was sent to static flow pusher",
 	recommendation="Fix the format of the static flow mod request")
 	public String store(String json) {
-		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class)).editChannel(json, getRequest().getClientInfo());
+		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class.getCanonicalName())).editChannel(json, getRequest().getClientInfo());
 	}
 }

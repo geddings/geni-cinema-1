@@ -51,13 +51,45 @@ public class Node {
 	}
 	
 	@Override
-	public boolean equals(Object node) {
-		if (node == null) return false;
-		if (!(node instanceof Node)) return false;
-		Node that = (Node) node;
-		if (!this.ofSwitch.equals(that.ofSwitch)) return false;
-		if (!this.ingressSwitchPort.equals(that.ingressSwitchPort)) return false;
-		if (!this.egressSwitchPort.equals(that.egressSwitchPort)) return false;
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime
+				* result
+				+ ((egressSwitchPort == null) ? 0 : egressSwitchPort.hashCode());
+		result = prime
+				* result
+				+ ((ingressSwitchPort == null) ? 0 : ingressSwitchPort
+						.hashCode());
+		result = prime * result
+				+ ((ofSwitch == null) ? 0 : ofSwitch.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		Node other = (Node) obj;
+		if (egressSwitchPort == null) {
+			if (other.egressSwitchPort != null)
+				return false;
+		} else if (!egressSwitchPort.equals(other.egressSwitchPort))
+			return false;
+		if (ingressSwitchPort == null) {
+			if (other.ingressSwitchPort != null)
+				return false;
+		} else if (!ingressSwitchPort.equals(other.ingressSwitchPort))
+			return false;
+		if (ofSwitch == null) {
+			if (other.ofSwitch != null)
+				return false;
+		} else if (!ofSwitch.equals(other.ofSwitch))
+			return false;
 		return true;
 	}
 	
@@ -73,23 +105,23 @@ public class Node {
 		}
 		
 		private NodeBuilder(Node node) {
-			this.b_ofSwitch = DatapathId.of(node.ofSwitch.getLong());
-			this.b_ingressSwitchPort = OFPort.of(node.ingressSwitchPort.getPortNumber());
-			this.b_egressSwitchPort = OFPort.of(node.egressSwitchPort.getPortNumber());
+			this.b_ofSwitch = node.ofSwitch;
+			this.b_ingressSwitchPort = node.ingressSwitchPort;
+			this.b_egressSwitchPort = node.egressSwitchPort;
 		}
 		
 		public NodeBuilder setSwitchDpid(DatapathId dpid) {
-			this.b_ofSwitch = DatapathId.of(dpid.getLong());
+			this.b_ofSwitch = dpid;
 			return this;
 		}
 		
 		public NodeBuilder setIngressPort(OFPort ingress) {
-			this.b_ingressSwitchPort = OFPort.of(ingress.getPortNumber());
+			this.b_ingressSwitchPort = ingress;
 			return this;
 		}
 		
 		public NodeBuilder setEgressPort(OFPort egress) {
-			this.b_egressSwitchPort = OFPort.of(egress.getPortNumber());
+			this.b_egressSwitchPort = egress;
 			return this;
 		}
 		

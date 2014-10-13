@@ -109,9 +109,17 @@ public class Channel {
 	public Node getSortNode() {
 		return this.sortNode;
 	}
+	
+	public void setSortNode(Node sort) {
+		this.sortNode = sort;
+	}
 
 	public OFGroup getGroup() {
 		return this.group;
+	}
+	
+	public void setGroup(OFGroup group) {
+		this.group = group;
 	}
 
 	public void turnOff() {
@@ -140,16 +148,16 @@ public class Channel {
 		decrementDemand();
 	}
 
-	private int decrementDemand() {
+	private void decrementDemand() {
 		if (this.demandCount <= 0) {
-			return this.demandCount;
+			//no-op
 		} else {
-			return --this.demandCount;
+			this.demandCount = this.demandCount - 1;
 		}
 	}
 
-	private int incrementDemand() { // no bounds checking
-		return ++this.demandCount;
+	private void incrementDemand() { // no bounds checking
+		this.demandCount = this.demandCount + 1;
 	}
 
 	public ChannelBuilder createBuilder() {
@@ -187,22 +195,91 @@ public class Channel {
 	}
 
 	@Override
-	public boolean equals(Object channel) {
-		if (channel == null) return false;
-		if (!(channel instanceof Channel)) return false;
-		Channel that = (Channel) channel;
-		if (!this.name.equals(that.name)) return false;
-		if (!this.description.equals(that.description)) return false;
-		if (!this.viewPassword.equals(that.viewPassword)) return false;
-		if (!this.adminPassword.equals(that.adminPassword)) return false;
-		if (this.id != that.id) return false;
-		if (!this.hostServer.equals(that.hostServer)) return false;
-		if (!this.hostPhysServer.equals(that.hostPhysServer)) return false;
-		if (this.live != that.live) return false;
-		if (this.demandCount != that.demandCount) return false;
-		if (!this.sortNode.equals(that.sortNode)) return false;
-		if (!this.group.equals(that.group)) return false;
-		if (!this.bucketList.equals(that.bucketList)) return false;
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result
+				+ ((adminPassword == null) ? 0 : adminPassword.hashCode());
+		result = prime * result
+				+ ((bucketList == null) ? 0 : bucketList.hashCode());
+		result = prime * result + demandCount;
+		result = prime * result
+				+ ((description == null) ? 0 : description.hashCode());
+		result = prime * result + ((group == null) ? 0 : group.hashCode());
+		result = prime * result
+				+ ((hostPhysServer == null) ? 0 : hostPhysServer.hashCode());
+		result = prime * result
+				+ ((hostServer == null) ? 0 : hostServer.hashCode());
+		result = prime * result + id;
+		result = prime * result + (live ? 1231 : 1237);
+		result = prime * result + ((name == null) ? 0 : name.hashCode());
+		result = prime * result
+				+ ((sortNode == null) ? 0 : sortNode.hashCode());
+		result = prime * result
+				+ ((viewPassword == null) ? 0 : viewPassword.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		Channel other = (Channel) obj;
+		if (adminPassword == null) {
+			if (other.adminPassword != null)
+				return false;
+		} else if (!adminPassword.equals(other.adminPassword))
+			return false;
+		if (bucketList == null) {
+			if (other.bucketList != null)
+				return false;
+		} else if (!bucketList.equals(other.bucketList))
+			return false;
+		if (demandCount != other.demandCount)
+			return false;
+		if (description == null) {
+			if (other.description != null)
+				return false;
+		} else if (!description.equals(other.description))
+			return false;
+		if (group == null) {
+			if (other.group != null)
+				return false;
+		} else if (!group.equals(other.group))
+			return false;
+		if (hostPhysServer == null) {
+			if (other.hostPhysServer != null)
+				return false;
+		} else if (!hostPhysServer.equals(other.hostPhysServer))
+			return false;
+		if (hostServer == null) {
+			if (other.hostServer != null)
+				return false;
+		} else if (!hostServer.equals(other.hostServer))
+			return false;
+		if (id != other.id)
+			return false;
+		if (live != other.live)
+			return false;
+		if (name == null) {
+			if (other.name != null)
+				return false;
+		} else if (!name.equals(other.name))
+			return false;
+		if (sortNode == null) {
+			if (other.sortNode != null)
+				return false;
+		} else if (!sortNode.equals(other.sortNode))
+			return false;
+		if (viewPassword == null) {
+			if (other.viewPassword != null)
+				return false;
+		} else if (!viewPassword.equals(other.viewPassword))
+			return false;
 		return true;
 	}
 
@@ -236,27 +313,27 @@ public class Channel {
 		}
 
 		private ChannelBuilder(Channel channel) {
-			b_name = new String(channel.name);
-			b_description = new String(channel.description);
+			b_name = channel.name;
+			b_description = channel.description;
 			b_id = channel.id;
 			b_viewPassword = channel.viewPassword;
 			b_adminPassword = channel.adminPassword;
-			b_hostServer = channel.hostServer.createBuilder().build();
-			b_hostPhysServer = channel.hostPhysServer.createBuilder().build();
+			b_hostServer = channel.hostServer;
+			b_hostPhysServer = channel.hostPhysServer;
 			b_live = channel.live;
 			b_demandCount = channel.demandCount;
-			b_sortNode = channel.sortNode.createBuilder().build();
+			b_sortNode = channel.sortNode;
 			b_group = OFGroup.of(channel.group.getGroupNumber());
 			b_bucketList = new HashMap<Integer, OFBucket>(channel.bucketList);
 		}
 
 		public ChannelBuilder setName(String name) {
-			this.b_name = new String(name);
+			this.b_name = name;
 			return this;
 		}
 
 		public ChannelBuilder setDescription(String description) {
-			this.b_description = new String(description);
+			this.b_description = description;
 			return this;
 		}
 
@@ -266,22 +343,22 @@ public class Channel {
 		}
 
 		public ChannelBuilder setViewPassword(String viewPassword) {
-			this.b_viewPassword = new String(viewPassword);
+			this.b_viewPassword = viewPassword;
 			return this;
 		}
 
 		public ChannelBuilder setAdminPassword(String adminPassword) {
-			this.b_adminPassword = new String(adminPassword);
+			this.b_adminPassword = adminPassword;
 			return this;
 		}
 
 		public ChannelBuilder setHostVLCStreamServer(VLCStreamServer hostServer) {
-			this.b_hostServer = hostServer.createBuilder().build();
+			this.b_hostServer = hostServer;
 			return this;
 		}
 		
 		public ChannelBuilder setHostServer(Server hostPhysServer) {
-			this.b_hostPhysServer = hostPhysServer.createBuilder().build();
+			this.b_hostPhysServer = hostPhysServer;
 			return this;
 		}
 
@@ -291,7 +368,11 @@ public class Channel {
 		}
 
 		public ChannelBuilder setSortNode(Node sort) {
-			this.b_sortNode = sort.createBuilder().build();
+			if (sort != null) {
+				this.b_sortNode = sort;
+			} else {
+				this.b_sortNode = null;
+			}
 			return this;
 		}
 		

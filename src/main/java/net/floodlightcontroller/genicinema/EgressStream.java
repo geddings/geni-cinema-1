@@ -45,11 +45,15 @@ public class EgressStream {
 		return this.channel;
 	}
 	
+	public void changeChannel(Channel channel) {
+		this.channel = channel;
+	}
+	
 	public int getId() {
 		return this.clientId;
 	}
 	
-	public VLCStreamServer getGateway() {
+	public VLCStreamServer getVLCSSAtGateway() {
 		return this.gateway;
 	}
 	
@@ -76,14 +80,42 @@ public class EgressStream {
 	}
 	
 	@Override
-	public boolean equals(Object egressStream) {
-		if (egressStream == null) return false;
-		if (!(egressStream instanceof EgressStream)) return false;
-		EgressStream that = (EgressStream) egressStream;
-		if (!this.channel.equals(that.channel)) return false;
-		if (this.clientId != that.clientId) return false;
-		if (!this.gateway.equals(that.gateway)) return false;
-		if (!this.client.equals(that.client)) return false;
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((channel == null) ? 0 : channel.hashCode());
+		result = prime * result + ((client == null) ? 0 : client.hashCode());
+		result = prime * result + clientId;
+		result = prime * result + ((gateway == null) ? 0 : gateway.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		EgressStream other = (EgressStream) obj;
+		if (channel == null) {
+			if (other.channel != null)
+				return false;
+		} else if (!channel.equals(other.channel))
+			return false;
+		if (client == null) {
+			if (other.client != null)
+				return false;
+		} else if (!client.equals(other.client))
+			return false;
+		if (clientId != other.clientId)
+			return false;
+		if (gateway == null) {
+			if (other.gateway != null)
+				return false;
+		} else if (!gateway.equals(other.gateway))
+			return false;
 		return true;
 	}
 	
@@ -101,14 +133,14 @@ public class EgressStream {
 		}
 		
 		private EgressStreamBuilder(EgressStream egressStream) {
-			this.b_channel = egressStream.channel.createBuilder().build();
+			this.b_channel = egressStream.channel;
 			this.b_clientId = egressStream.clientId;
-			this.b_gateway = egressStream.gateway.createBuilder().build();
-			this.b_client = egressStream.client.createBuilder().build();
+			this.b_gateway = egressStream.gateway;
+			this.b_client = egressStream.client;
 		}
 		
 		public EgressStreamBuilder setChannel(Channel channel) {
-			this.b_channel = channel.createBuilder().build();
+			this.b_channel = channel;
 			return this;
 		}
 		
@@ -118,12 +150,12 @@ public class EgressStream {
 		}
 		
 		public EgressStreamBuilder setGateway(VLCStreamServer gateway) {
-			this.b_gateway = gateway.createBuilder().build();
+			this.b_gateway = gateway;
 			return this;
 		}
 		
 		public EgressStreamBuilder setClient(VideoSocket client) {
-			this.b_client = client.createBuilder().build();
+			this.b_client = client;
 			return this;
 		}
 		

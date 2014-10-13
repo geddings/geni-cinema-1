@@ -44,13 +44,40 @@ public class VideoSocket {
 	}
 	
 	@Override
-	public boolean equals(Object videoSocket) {
-		if (videoSocket == null) return false;
-		if (!(videoSocket instanceof VideoSocket)) return false;
-		VideoSocket that = (VideoSocket) videoSocket;
-		if (!this.ip.equals(that.ip)) return false;
-		if (!this.port.equals(that.port)) return false;
-		if (!this.protocol.equals(that.protocol)) return false;
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((ip == null) ? 0 : ip.hashCode());
+		result = prime * result + ((port == null) ? 0 : port.hashCode());
+		result = prime * result
+				+ ((protocol == null) ? 0 : protocol.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		VideoSocket other = (VideoSocket) obj;
+		if (ip == null) {
+			if (other.ip != null)
+				return false;
+		} else if (!ip.equals(other.ip))
+			return false;
+		if (port == null) {
+			if (other.port != null)
+				return false;
+		} else if (!port.equals(other.port))
+			return false;
+		if (protocol == null) {
+			if (other.protocol != null)
+				return false;
+		} else if (!protocol.equals(other.protocol))
+			return false;
 		return true;
 	}
 	
@@ -66,23 +93,23 @@ public class VideoSocket {
 		}
 		
 		private VideoSocketBuilder(VideoSocket videoSocket) {
-			this.b_ip = IPv4Address.of(videoSocket.ip.getInt());
-			this.b_port = TransportPort.of(videoSocket.port.getPort());
-			this.b_protocol = IpProtocol.of(videoSocket.protocol.getIpProtocolNumber());
+			this.b_ip = videoSocket.ip;
+			this.b_port = videoSocket.port;
+			this.b_protocol = videoSocket.protocol;
 		}
 		
 		public VideoSocketBuilder setIP(IPv4Address ip) {
-			this.b_ip = IPv4Address.of(ip.getInt());
+			this.b_ip = ip;
 			return this;
 		}
 		
 		public VideoSocketBuilder setPort(TransportPort port) {
-			this.b_port = TransportPort.of(port.getPort());
+			this.b_port = port;
 			return this;
 		}
 		
 		public VideoSocketBuilder setProtocol(IpProtocol protocol) {
-			this.b_protocol = IpProtocol.of(protocol.getIpProtocolNumber());
+			this.b_protocol = protocol;
 			return this;
 		}
 		

@@ -23,6 +23,14 @@ public class VLCStreamServer {
 		return this.isAvailable;
 	}
 	
+	public void setInUse() {
+		this.isAvailable = false;
+	}
+	
+	public void setNotInUse() {
+		this.isAvailable = false;
+	}
+	
 	public VLCStreamServerBuilder createBuilder() {
 		return new VLCStreamServerBuilder(this);
 	}
@@ -40,13 +48,36 @@ public class VLCStreamServer {
 	}
 	
 	@Override
-	public boolean equals(Object vlcStreamServer) {
-		if (vlcStreamServer == null) return false;
-		if (!(vlcStreamServer instanceof VLCStreamServer)) return false;
-		VLCStreamServer that = (VLCStreamServer) vlcStreamServer;
-		if (!this.ingress.equals(that.ingress)) return false;
-		if (!this.egress.equals(that.egress)) return false;
-		if (this.isAvailable != that.isAvailable) return false;
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((egress == null) ? 0 : egress.hashCode());
+		result = prime * result + ((ingress == null) ? 0 : ingress.hashCode());
+		result = prime * result + (isAvailable ? 1231 : 1237);
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		VLCStreamServer other = (VLCStreamServer) obj;
+		if (egress == null) {
+			if (other.egress != null)
+				return false;
+		} else if (!egress.equals(other.egress))
+			return false;
+		if (ingress == null) {
+			if (other.ingress != null)
+				return false;
+		} else if (!ingress.equals(other.ingress))
+			return false;
+		if (isAvailable != other.isAvailable)
+			return false;
 		return true;
 	}
 	
@@ -62,18 +93,18 @@ public class VLCStreamServer {
 		}
 		
 		private VLCStreamServerBuilder(VLCStreamServer vlcStreamServer) {
-			this.b_ingress = vlcStreamServer.ingress.createBuilder().build();
-			this.b_egress = vlcStreamServer.egress.createBuilder().build();
+			this.b_ingress = vlcStreamServer.ingress;
+			this.b_egress = vlcStreamServer.egress;
 			this.b_isAvailable = vlcStreamServer.isAvailable;
 		}
 		
 		public VLCStreamServerBuilder setIngress(VideoSocket ingress) {
-			this.b_ingress = ingress.createBuilder().build();
+			this.b_ingress = ingress;
 			return this;
 		}
 		
 		public VLCStreamServerBuilder setEgress(VideoSocket egress) {
-			this.b_egress = egress.createBuilder().build();
+			this.b_egress = egress;
 			return this;
 		}
 		

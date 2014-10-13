@@ -63,13 +63,39 @@ public class IngressStream {
 	}
 	
 	@Override
-	public boolean equals(Object ingressStream) {
-		if (ingressStream == null) return false;
-		if (!(ingressStream instanceof IngressStream)) return false;
-		IngressStream that = (IngressStream) ingressStream;
-		if (!this.client.equals(that.client)) return false;
-		if (!this.ingress.equals(that.ingress)) return false;
-		if (!this.server.equals(that.server)) return false;
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((client == null) ? 0 : client.hashCode());
+		result = prime * result + ((ingress == null) ? 0 : ingress.hashCode());
+		result = prime * result + ((server == null) ? 0 : server.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		IngressStream other = (IngressStream) obj;
+		if (client == null) {
+			if (other.client != null)
+				return false;
+		} else if (!client.equals(other.client))
+			return false;
+		if (ingress == null) {
+			if (other.ingress != null)
+				return false;
+		} else if (!ingress.equals(other.ingress))
+			return false;
+		if (server == null) {
+			if (other.server != null)
+				return false;
+		} else if (!server.equals(other.server))
+			return false;
 		return true;
 	}
 	
@@ -85,13 +111,13 @@ public class IngressStream {
 		}
 		
 		private IngressStreamBuilder(IngressStream ingressStream) {
-			this.b_client = ingressStream.client.createBuilder().build();
-			this.b_ingress = ingressStream.ingress.createBuilder().build();
-			this.b_server = ingressStream.server.createBuilder().build();
+			this.b_client = ingressStream.client;
+			this.b_ingress = ingressStream.ingress;
+			this.b_server = ingressStream.server;
 		}
 		
 		public IngressStreamBuilder setClient(VideoSocket client) {
-			this.b_client = client.createBuilder().build();
+			this.b_client = client;
 			return this;
 		}
 		
@@ -101,7 +127,7 @@ public class IngressStream {
 		}
 		
 		public IngressStreamBuilder setServer(VLCStreamServer server) {
-			this.b_server = server.createBuilder().build();
+			this.b_server = server;
 			return this;
 		}
 		

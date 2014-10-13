@@ -17,6 +17,6 @@ public class RemoveGENICinemaResource extends ServerResource {
 	explanation="An invalid delete request was sent to static flow pusher",
 	recommendation="Fix the format of the static flow mod request")
 	public String parseRemoveRequest(String json) {
-		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class)).removeChannel(json, getRequest().getClientInfo());
+		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class.getCanonicalName())).removeChannel(json, getRequest().getClientInfo());
 	}
 }
