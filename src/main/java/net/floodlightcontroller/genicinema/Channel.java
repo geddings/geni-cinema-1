@@ -87,11 +87,11 @@ public class Channel {
 	}
 
 	public String getViewPassword() {
-		return this.description;
+		return this.viewPassword;
 	}
 
 	public String getAdminPassword() {
-		return this.description;
+		return this.adminPassword;
 	}
 
 	public boolean getLive() {
@@ -306,7 +306,7 @@ public class Channel {
 			b_hostServer = null;
 			b_hostPhysServer = null;
 			b_live = false;
-			b_demandCount = -1;
+			b_demandCount = 0;
 			b_sortNode = null;
 			b_group = null;
 			b_bucketList = new HashMap<Integer, OFBucket>();

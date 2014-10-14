@@ -1,5 +1,7 @@
 package net.floodlightcontroller.genicinema.web;
 
+import java.util.Map;
+
 import net.floodlightcontroller.genicinema.IGENICinemaService;
 
 import org.restlet.resource.Post;
@@ -36,7 +38,7 @@ public class AddGENICinemaResource extends ServerResource {
 	 * @return A string status message
 	 */
 	@Post
-	public String parseAddRequest(String json) {
+	public Map<String, String> parseAddRequest(String json) {
 		
 
 		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class.getCanonicalName())).addChannel(json, getRequest().getClientInfo());

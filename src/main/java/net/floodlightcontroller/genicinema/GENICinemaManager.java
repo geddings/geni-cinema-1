@@ -39,9 +39,12 @@ import org.restlet.data.ClientInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.MappingJsonFactory;
+import com.fasterxml.jackson.databind.jsonFormatVisitors.JsonObjectFormatVisitor;
 
 import net.floodlightcontroller.core.FloodlightContext;
 import net.floodlightcontroller.core.IOFMessageListener;
@@ -98,7 +101,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	private static int clientIdGenerator = 0;
 	private static int channelIdGenerator = 0;
 	private static int groupIDGenerator = 0;
-
+	
 	/*
 	 * IFloodlightModule implementation
 	 */
@@ -149,9 +152,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		egressStreamsPerAggregate = new HashMap<String, ArrayList<EgressStream>>(1); // "large" number of clients possible
 		vlcStreamsPerServer = new HashMap<Server, ArrayList<VLCStreamServer>>(1);
 		vlcStreamsPerEgressGateway = new HashMap<Gateway, ArrayList<VLCStreamServer>>(1);
-
-
-
+		
 		/*
 		 * For now, let's fake an existing aggregate w/o discovery.
 		 */
@@ -347,7 +348,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	}
 
 	@Override
-	public String addChannel(String json, ClientInfo clientInfo) {
+	public Map<String, String> addChannel(String json, ClientInfo clientInfo) {
 		/* 
 		 * This will presumably get us the client IP of the most recent hop.
 		 * e.g. If NAT is involved between us and the client, this should
@@ -360,6 +361,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		JsonParser jp;
 
 		ChannelBuilder cb = new ChannelBuilder();
+		
+		Map<String, String> response = new HashMap<String, String>();
 
 		int reqFields = 0;
 		try {
@@ -416,7 +419,9 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		if (reqFields < 4) {
 			log.error("Did not receive all expected JSON fields in Add request! Only got {} matches. CHANNEL NOT ADDED.", reqFields);
-			return "";
+			response.put(JsonStrings.Add.Response.result, "1");
+			response.put(JsonStrings.Add.Response.result_message, "Did not receive all expected JSON fields in Add request.");
+			return response;
 		}
 
 		//TODO this is a naive approach as-is. The following functions need to be non-dependent.
@@ -429,7 +434,10 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		Gateway ingressGW = findBestIngressGateway(IPv4Address.of(clientIP));		
 		if (ingressGW == null) {
 			log.error("Could not find an available GENI Cinema Ingress Gateway for the client with IP {}", clientIP);
-			return "";
+			response.put(JsonStrings.Add.Response.result, "2");
+			response.put(JsonStrings.Add.Response.result_message, 
+					"Could not find an available GENI Cinema Ingress Gateway for the client with IP " + clientIP);
+			return response;
 		}
 
 		/*
@@ -441,7 +449,10 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		VLCStreamServer hostServerVLCSS = getVLCSSOnHostServer(hostServer);		
 		if (hostServerVLCSS ==  null) {
 			log.error("Could not find an available VLCStreamServer (i.e. an available VLC listen socket) for the client to stream to.");
-			return "";
+			response.put(JsonStrings.Add.Response.result, "3");
+			response.put(JsonStrings.Add.Response.result_message, 
+					"Could not allocate a new ingress stream to the GENI Cinema Service. Please try again and contact the admins if the problem persists.");
+			return response;
 		}
 
 		/*
@@ -456,11 +467,16 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		isb.setGateway(ingressGW)
 		.setServer(hostServerVLCSS)
 		.setClient(vsb.build());
+		
+		IngressStream theStream = isb.build();
 
 		/* Update Manager with new IngressStream */
-		if (!addIngressStream(isb.build())) {
+		if (!addIngressStream(theStream)) {
 			log.error("Could not add new IngressStream to the Manager!");
-			return "";
+			response.put(JsonStrings.Add.Response.result, "4");
+			response.put(JsonStrings.Add.Response.result_message, 
+					"Could not add the allocated ingress stream to the GENI Cinema Service. Please try again and contact the admins if the problem persists.");
+			return response;
 		}
 
 		Channel theChannel = 
@@ -477,9 +493,24 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		if (!addChannel(theChannel)) {
 			log.error("Could not add new Channel to the Manager!");
-			return "";
+			response.put(JsonStrings.Add.Response.result, "5");
+			response.put(JsonStrings.Add.Response.result_message, 
+					"Could not add the allocated channel to the GENI Cinema Service. Please try again and contact the admins if the problem persists.");
+			return response;
 		}
-		return "";
+		
+		response.put(JsonStrings.Add.Response.result, "0");
+		response.put(JsonStrings.Add.Response.result_message, 
+				"Channel has been successfully added to the GENI Cinema Service. Initiate your stream to make the channel available to viewers.");
+		response.put(JsonStrings.Add.Response.admin_password, theChannel.getAdminPassword());
+		response.put(JsonStrings.Add.Response.channel_id, Integer.toString(theChannel.getId()));
+		response.put(JsonStrings.Add.Response.description, theChannel.getDescription());
+		response.put(JsonStrings.Add.Response.gateway_ip, theStream.getGateway().getPublicIP().toString());
+		response.put(JsonStrings.Add.Response.gateway_port, theStream.getServer().getIngress().getPort().toString());
+		response.put(JsonStrings.Add.Response.name, theChannel.getName());
+		response.put(JsonStrings.Add.Response.view_password, theChannel.getViewPassword());
+		return response;
+
 	}
 
 	@Override

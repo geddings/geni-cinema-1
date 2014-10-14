@@ -1,5 +1,7 @@
 package net.floodlightcontroller.genicinema;
 
+import java.util.Map;
+
 import org.restlet.data.ClientInfo;
 
 import net.floodlightcontroller.core.module.IFloodlightService;
@@ -32,7 +34,7 @@ public interface IGENICinemaService extends IFloodlightService {
 	 * @param clientInfo, info on the client from restlet
 	 * @return The message to be sent back to the client
 	 */
-	public String addChannel(String json, ClientInfo clientInfo);
+	public Map<String, String> addChannel(String json, ClientInfo clientInfo);
 	
 	/**
 	 * Remove an existing channel defined by
