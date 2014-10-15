@@ -26,7 +26,7 @@ public interface IGENICinemaService extends IFloodlightService {
 	 * Get all available channels in JSON format
 	 * @return The message to be sent back to the client
 	 */
-	public String getChannels();
+	public Map<String, Map<String, String>> getChannels();
 	
 	/**
 	 * Add a new channel from a JSON string
@@ -52,7 +52,7 @@ public interface IGENICinemaService extends IFloodlightService {
 	 * @param clientInfo, info on the client from restlet
 	 * @return The message to be sent back to the client
 	 */
-	public String watchChannel(String json, ClientInfo clientInfo);
+	public Map<String, String> watchChannel(String json, ClientInfo clientInfo);
 	
 	/**
 	 * Request to edit a channel defined by
@@ -62,4 +62,16 @@ public interface IGENICinemaService extends IFloodlightService {
 	 * @return The message to be sent back to the client
 	 */
 	public String editChannel(String json, ClientInfo clientInfo);
+
+	/**
+	 * Notify the service that the client is still connected
+	 * and watching. The web browser the client is using
+	 * should send this probe message periodically at least once
+	 * every five minutes. If this time elapses without hearing
+	 * from the client, it's resources will be revoked.
+	 * @param json, the string from the client
+	 * @param clientInfo, info on the client from restlet
+	 * @return The message sent back to the client
+	 */
+	public Map<String, String> clientKeepAlive(String json, ClientInfo clientInfo);
 }

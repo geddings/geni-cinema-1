@@ -342,7 +342,13 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	 */
 
 	@Override
-	public String getChannels() {
+	public Map<String, Map<String, String>> getChannels() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+	
+	@Override
+	public Map<String, String> clientKeepAlive(String json, ClientInfo clientInfo) {
 		// TODO Auto-generated method stub
 		return null;
 	}
@@ -361,6 +367,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		JsonParser jp;
 
 		ChannelBuilder cb = new ChannelBuilder();
+		
+		String json_name = "";
 		
 		Map<String, String> response = new HashMap<String, String>();
 
@@ -396,11 +404,12 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 					reqFields++;
 					break;
 				case JsonStrings.Add.Request.description:
-					cb.setDescription(jp.getText());
+					cb.setDescription(jp.getText().trim());
 					reqFields++;
 					break;
 				case JsonStrings.Add.Request.name:
-					cb.setName(jp.getText());
+					cb.setName(jp.getText().trim());
+					json_name = jp.getText().trim();
 					reqFields++;
 					break;
 				default:
@@ -427,6 +436,12 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		//TODO this is a naive approach as-is. The following functions need to be non-dependent.
 		//i.e. we need an algorithm to select a Gateway, sort Node, and Server.
 
+		/*
+		 * Check if the Channel name already exists.
+		 */
+		//TODO
+		
+		
 		/*
 		 * Try to determine where the client is, and based on
 		 * location, assign the client to a nearby ingress GCGW.
@@ -520,7 +535,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	}
 
 	@Override
-	public String watchChannel(String json, ClientInfo clientInfo) {
+	public Map<String, String> watchChannel(String json, ClientInfo clientInfo) {
 
 		String clientIP = clientInfo.getAddress(); 
 
@@ -531,6 +546,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		String json_clientId = "";
 		String json_channelId = "";
 		String json_viewPass = "";
+		
+		Map<String, String> response = new HashMap<String, String>();
 
 		try {
 			jp = f.createJsonParser(json);
@@ -582,7 +599,9 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		if (reqFields < 2 || (reqFields == 3 && json_clientId.equals(""))) {
 			log.error("Did not receive all expected JSON fields in Add request! Only got {} matches. CHANNEL NOT ADDED.", reqFields);
-			return "";
+			response.put(JsonStrings.Add.Response.result, "1");
+			response.put(JsonStrings.Add.Response.result_message, "Did not receive all expected JSON fields in Watch request.");
+			return response;
 		}
 
 		/*
@@ -594,13 +613,18 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			requestedChannelAsInt = Integer.parseInt(json_channelId);
 		} catch (NumberFormatException e) {
 			log.error("Could not parse specified Channel ID '{}'.", json_channelId);
-			return "";
+			response.put(JsonStrings.Add.Response.result, "2");
+			response.put(JsonStrings.Add.Response.result_message, 
+					"Could not parse specified Channel ID. Please provide a positive, integer Channel ID.");
+			return response;
 		}
 
 		Channel channel = lookupChannel(requestedChannelAsInt);
 		if (channel == null) {
 			log.error("Could not locate specified Channel ID '{}'.", requestedChannelAsInt);
-			return "";
+			response.put(JsonStrings.Add.Response.result, "3");
+			response.put(JsonStrings.Add.Response.result_message, "The Channel ID specified is not available as this time.");
+			return response;
 		}
 
 		/*
@@ -620,11 +644,13 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				log.debug("Client ID was empty string. Assuming new client connection.");
 			} else {
 				log.error("Could not parse specified Client ID '{}'.", json_clientId);
-				return "";
+				response.put(JsonStrings.Add.Response.result, "4");
+				response.put(JsonStrings.Add.Response.result_message, "A client ID was provided, but it could not be parsed. Please check your client ID and try again.");
+				return response;
 			}
 		}
 
-		EgressStream existingStream = lookupClient(requestedClientAsInt);
+		EgressStream existingStream = lookupClient(requestedClientAsInt); // TODO this will return null even if we specify a junk client ID. Should probably see if "" CID --> null
 		if (existingStream == null) {
 			/*
 			 * Determine a Gateway where the client can attach and watch.
@@ -632,7 +658,10 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			Gateway egressGW = findBestEgressGateway(IPv4Address.of(clientIP)); // TODO should base on where the video is located AND the client, not just the client...
 			if (egressGW == null) {
 				log.error("Could not locate a suitable egress Gateway for client IP {}", clientIP);
-				return "";
+				response.put(JsonStrings.Add.Response.result, "5");
+				response.put(JsonStrings.Add.Response.result_message, 
+						"The GENI Cinema Service could not find a suitable gateway for you to attach to. The service might be overloaded. Please try again later or contact the admins if the problem persists.");
+				return response;
 			}
 			log.debug("Found a suitable egress Gateway: {}", egressGW);
 
@@ -642,7 +671,10 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			VLCStreamServer vlcss = getVLCSSOnGateway(egressGW);
 			if (vlcss == null) {
 				log.error("Could not allocate a VLCStreamServer on Gateway {}", egressGW.toString());
-				return "";
+				response.put(JsonStrings.Add.Response.result, "6");
+				response.put(JsonStrings.Add.Response.result_message, 
+						"The GENI Cinema Service could not allocate a connection for you at your local gateway. The service might be overloaded. Please try again later or contact the admins if the problem persists.");
+				return response;
 			}
 			log.debug("On egress Gateway {}, found an available VLCSS: {}", egressGW, vlcss);
 
@@ -674,13 +706,35 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			addEgressStream(es);
 			log.debug("All resources allocated for NEW EgressStream. EgressStream set:", es);
 
+			response.put(JsonStrings.Add.Response.result, "0"); // success, but not really
+			response.put(JsonStrings.Add.Response.result_message, 
+					"Thanks for tuning in! Your initial Channel selection is " + es.getChannel().getId());
+			response.put(JsonStrings.Watch.Response.channel_id, String.valueOf(es.getChannel().getId()));
+			response.put(JsonStrings.Watch.Response.client_id, String.valueOf(es.getId()));
+			response.put(JsonStrings.Watch.Response.description, es.getChannel().getDescription());
+			response.put(JsonStrings.Watch.Response.gateway_ip, es.getVLCSSAtGateway().getEgress().getIP().toString());
+			response.put(JsonStrings.Watch.Response.gateway_port, es.getVLCSSAtGateway().getEgress().getPort().toString());
+			response.put(JsonStrings.Watch.Response.gateway_protocol, es.getVLCSSAtGateway().getEgress().getProtocol().toString());
+			response.put(JsonStrings.Watch.Response.name, es.getChannel().getName());
+			return response;
+			
 			/*
 			 * Check if we are wanting to change Channels to the one we're watching already.
 			 * If so, we can simply do nothing and return.
 			 */
 		} else if (existingStream.getChannel().getId() == requestedChannelAsInt) {
 			log.debug("Client {} tried to change Channels to same Channel {}. Leaving same configuration.", existingStream.getId(), existingStream.getChannel().getId());
-			return "";
+			response.put(JsonStrings.Add.Response.result, "0"); // success, but not really
+			response.put(JsonStrings.Add.Response.result_message, 
+					"The Channel specified is the Channel you are currently watching.");
+			response.put(JsonStrings.Watch.Response.channel_id, String.valueOf(existingStream.getChannel().getId()));
+			response.put(JsonStrings.Watch.Response.client_id, String.valueOf(existingStream.getId()));
+			response.put(JsonStrings.Watch.Response.description, existingStream.getChannel().getDescription());
+			response.put(JsonStrings.Watch.Response.gateway_ip, existingStream.getVLCSSAtGateway().getEgress().getIP().toString());
+			response.put(JsonStrings.Watch.Response.gateway_port, existingStream.getVLCSSAtGateway().getEgress().getPort().toString());
+			response.put(JsonStrings.Watch.Response.gateway_protocol, existingStream.getVLCSSAtGateway().getEgress().getProtocol().toString());
+			response.put(JsonStrings.Watch.Response.name, existingStream.getChannel().getName());
+			return response;
 
 			/*
 			 * Otherwise, the client is currently watching a Channel and would like to switch.
@@ -707,15 +761,25 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			 * Now, update manager's copy with new Channel.
 			 */
 			existingStream.changeChannel(channel);
+			
+			response.put(JsonStrings.Add.Response.result, "0"); // success, but not really
+			response.put(JsonStrings.Add.Response.result_message, 
+					"You are now watching Channel " + existingStream.getChannel().getId());
+			response.put(JsonStrings.Watch.Response.channel_id, String.valueOf(existingStream.getChannel().getId()));
+			response.put(JsonStrings.Watch.Response.client_id, String.valueOf(existingStream.getId()));
+			response.put(JsonStrings.Watch.Response.description, existingStream.getChannel().getDescription());
+			response.put(JsonStrings.Watch.Response.gateway_ip, existingStream.getVLCSSAtGateway().getEgress().getIP().toString());
+			response.put(JsonStrings.Watch.Response.gateway_port, existingStream.getVLCSSAtGateway().getEgress().getPort().toString());
+			response.put(JsonStrings.Watch.Response.gateway_protocol, existingStream.getVLCSSAtGateway().getEgress().getProtocol().toString());
+			response.put(JsonStrings.Watch.Response.name, existingStream.getChannel().getName());
+			return response;
 		}
-
-		return "";
 	}
 
 	@Override
 	public String editChannel(String json, ClientInfo clientInfo) {
 		// TODO Auto-generated method stub
-		return null;
+		return "";
 	}
 
 	/*
@@ -1101,6 +1165,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			for (Node node : aggSortSwitches) {
 				if (node.getSwitchDpid().equals(sw.getId())) {
 					groups = aggregate.peekOFGroups(node);
+					log.debug("Could be a race condition here... got groups={}, DPID={}", groups, sw.getId().toString());
 					for (OFGroup group : groups) {
 						log.debug("Found Node with matching DPID {} in Aggregate {}. Creating OFGroupAdd's for switch.", sw.getId().toString(), aggregate.getName());
 						OFFactory factory = sw.getOFFactory();
@@ -1388,7 +1453,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 								.setExact(MatchField.ETH_TYPE, EthType.IPv4)
 								.setExact(MatchField.IP_PROTO, oldStream.getChannel().getHostVLCStreamServer().getEgress().getProtocol())
 								.setExact(MatchField.UDP_SRC, oldStream.getChannel().getHostVLCStreamServer().getEgress().getPort())
-								.setExact(MatchField.IN_PORT, oldStream.getChannel().getHostServer().getOVSNode().getIngressPort())
+								.setExact(MatchField.IN_PORT, oldStream.getChannel().getSortNode().getIngressPort())
 								.build())
 								.setBufferId(OFBufferId.NO_BUFFER)
 								.build(); /* Do not set any actions --> DROP */
@@ -1402,6 +1467,10 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				 * Return the OFGroup to the pool.
 				 */
 				// TODO
+				//oldStream.getChannel().setGroup(OFGroup.ZERO); 
+				// this will force the Channel to ask for a new group next time, but it will not return it
+				// we need a way for each sort switch to maintain a list of OFgroups applicable to it and
+				// return the group to the list it was checked out from.
 			}
 		}
 	}

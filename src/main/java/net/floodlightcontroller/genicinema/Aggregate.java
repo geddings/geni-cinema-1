@@ -47,19 +47,19 @@ public class Aggregate {
 	}
 
 	public ArrayList<Gateway> getIngressGateways() {
-		return this.ingressGateways;
+		return new ArrayList<Gateway>(this.ingressGateways);
 	}
 
 	public ArrayList<Gateway> getEgressGateways() {
-		return this.egressGateways;
+		return new ArrayList<Gateway>(this.egressGateways);
 	}
 
 	public ArrayList<Node> getSwitches() {
-		return this.ovsVMs;
+		return new ArrayList<Node>(this.ovsVMs);
 	}
 
 	public ArrayList<Server> getServers() {
-		return this.vlcsVMs;
+		return new ArrayList<Server>(this.vlcsVMs);
 	}
 
 	public OFGroup getAvailableOFGroup(Node node) {

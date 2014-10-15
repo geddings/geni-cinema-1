@@ -1,5 +1,7 @@
 package net.floodlightcontroller.genicinema.web;
 
+import java.util.Map;
+
 import net.floodlightcontroller.genicinema.IGENICinemaService;
 
 import org.restlet.resource.Post;
@@ -33,7 +35,7 @@ public class ViewGENICinemaResource extends ServerResource {
 	 * @return A string status message
 	 */
 	@Post
-	public String parseViewRequest(String json) {
+	public Map<String, String> parseViewRequest(String json) {
 		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class.getCanonicalName())).watchChannel(json, getRequest().getClientInfo());
 	}
 }

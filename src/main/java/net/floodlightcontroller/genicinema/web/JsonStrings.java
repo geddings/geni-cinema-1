@@ -48,7 +48,6 @@ public class JsonStrings {
 		public static class Response {
 			public static final String name = NAME;
 			public static final String description = DESCRIPTION;
-			public static final String view_password = Watch.Request.view_password;
 			public static final String channel_id = Watch.Request.channel_id;
 			public static final String client_id = Watch.Request.client_id;
 			public static final String gateway_ip = GATEWAY_IP;
