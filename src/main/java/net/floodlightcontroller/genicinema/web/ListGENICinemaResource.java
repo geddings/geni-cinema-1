@@ -1,5 +1,6 @@
 package net.floodlightcontroller.genicinema.web;
 
+import java.util.ArrayList;
 import java.util.Map;
 
 import net.floodlightcontroller.genicinema.IGENICinemaService;
@@ -13,7 +14,7 @@ public class ListGENICinemaResource extends ServerResource {
 	protected static Logger log = LoggerFactory.getLogger(ListGENICinemaResource.class);
 
 	@Get
-	public Map<String, Map<String, String>> getChannels() {
+	public ArrayList<Map<String, String>> getChannels() {
 		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class.getCanonicalName())).getChannels();
 	}
 }

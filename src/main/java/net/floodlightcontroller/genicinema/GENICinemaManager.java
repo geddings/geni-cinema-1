@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 import org.projectfloodlight.openflow.protocol.OFBucket;
 import org.projectfloodlight.openflow.protocol.OFFactory;
@@ -101,7 +102,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	private static int clientIdGenerator = 0;
 	private static int channelIdGenerator = 0;
 	private static int groupIDGenerator = 0;
-	
+
 	/*
 	 * IFloodlightModule implementation
 	 */
@@ -152,7 +153,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		egressStreamsPerAggregate = new HashMap<String, ArrayList<EgressStream>>(1); // "large" number of clients possible
 		vlcStreamsPerServer = new HashMap<Server, ArrayList<VLCStreamServer>>(1);
 		vlcStreamsPerEgressGateway = new HashMap<Gateway, ArrayList<VLCStreamServer>>(1);
-		
+
 		/*
 		 * For now, let's fake an existing aggregate w/o discovery.
 		 */
@@ -205,8 +206,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		VideoSocket pubSock;
 		VideoSocket privSock;
 		VLCStreamServerBuilder vlcssb = new VLCStreamServerBuilder();
-		int udpPort = 5000;
 		int tcpPort = 31000;
+		int udpPort = 32000;
 
 		for (int i = 0; i < 2; i++) {
 			vsb.setIP(server.getPublicIP())
@@ -224,8 +225,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		}
 
 		// now do the egress gateway's
-		udpPort = 5000;
-		tcpPort = 31000;
+		udpPort = 32000;
+		tcpPort = 33000;
 		for (int i = 0; i < 10; i++) {
 			vsb.setIP(egress_gw.getPublicIP())
 			.setPort(TransportPort.of(tcpPort++)) // will need to set this port
@@ -288,7 +289,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		log.debug("Switch {} connected. Checking if it's a sort switch.", switchId.toString());
 		initializeSortSwitchOFGroups(switchService.getSwitch(switchId));
-		
+
 		log.debug("Switch {} connected. Removing any existing UDP flows if it's a GENI Cinema switch.", switchId.toString());
 		removeExistingUDPFlows(switchService.getSwitch(switchId));
 
@@ -309,8 +310,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				log.debug("Switch {} does not belong to Aggregate {}.", switchId.toString(), aggregate.getName());
 			}
 		}
-		
-		
+
+
 	}
 
 	@Override
@@ -342,11 +343,41 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	 */
 
 	@Override
-	public Map<String, Map<String, String>> getChannels() {
-		// TODO Auto-generated method stub
-		return null;
+	public ArrayList<Map<String, String>> getChannels() {
+		ArrayList<Map<String, String>> response = new ArrayList<Map<String, String>>();
+
+		for (Aggregate aggregate : aggregates) {
+			ArrayList<Channel> channels = channelsPerAggregate.get(aggregate.getName());
+			if (channels == null) {
+				// no-op; skip to next aggregate
+			} else {
+				for (Channel channel : channels) {
+					if (channel.getLive()) {
+						Map<String, String> channelInfo = new HashMap<String, String>();
+						channelInfo.put(JsonStrings.Query.Response.channel_id, String.valueOf(channel.getId()));
+						channelInfo.put(JsonStrings.Query.Response.description, channel.getDescription());
+						channelInfo.put(JsonStrings.Query.Response.name, channel.getName());
+						channelInfo.put(JsonStrings.Query.Response.aggregate_name, aggregate.getName());
+						response.add(channelInfo);
+					}
+				}
+			}
+		}
+		
+		Map<String, String> result = new HashMap<String, String>();
+		if (response.isEmpty()) {
+			result.put(JsonStrings.Query.Response.result, "1");
+			result.put(JsonStrings.Query.Response.result_message, "There are no Channels available at this time. Please check back later.");
+			response.add(result);
+		} else {
+			result.put(JsonStrings.Query.Response.result, "0");
+			result.put(JsonStrings.Query.Response.result_message, "There are Channels available for viewing. See the returned Channel information to make your selection.");
+			response.add(result);
+		}
+
+		return response;
 	}
-	
+
 	@Override
 	public Map<String, String> clientKeepAlive(String json, ClientInfo clientInfo) {
 		// TODO Auto-generated method stub
@@ -367,9 +398,9 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		JsonParser jp;
 
 		ChannelBuilder cb = new ChannelBuilder();
-		
+
 		String json_name = "";
-		
+
 		Map<String, String> response = new HashMap<String, String>();
 
 		int reqFields = 0;
@@ -440,8 +471,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * Check if the Channel name already exists.
 		 */
 		//TODO
-		
-		
+
+
 		/*
 		 * Try to determine where the client is, and based on
 		 * location, assign the client to a nearby ingress GCGW.
@@ -482,7 +513,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		isb.setGateway(ingressGW)
 		.setServer(hostServerVLCSS)
 		.setClient(vsb.build());
-		
+
 		IngressStream theStream = isb.build();
 
 		/* Update Manager with new IngressStream */
@@ -513,7 +544,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 					"Could not add the allocated channel to the GENI Cinema Service. Please try again and contact the admins if the problem persists.");
 			return response;
 		}
-		
+
 		response.put(JsonStrings.Add.Response.result, "0");
 		response.put(JsonStrings.Add.Response.result_message, 
 				"Channel has been successfully added to the GENI Cinema Service. Initiate your stream to make the channel available to viewers.");
@@ -546,7 +577,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		String json_clientId = "";
 		String json_channelId = "";
 		String json_viewPass = "";
-		
+
 		Map<String, String> response = new HashMap<String, String>();
 
 		try {
@@ -717,7 +748,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			response.put(JsonStrings.Watch.Response.gateway_protocol, es.getVLCSSAtGateway().getEgress().getProtocol().toString());
 			response.put(JsonStrings.Watch.Response.name, es.getChannel().getName());
 			return response;
-			
+
 			/*
 			 * Check if we are wanting to change Channels to the one we're watching already.
 			 * If so, we can simply do nothing and return.
@@ -761,7 +792,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			 * Now, update manager's copy with new Channel.
 			 */
 			existingStream.changeChannel(channel);
-			
+
 			response.put(JsonStrings.Add.Response.result, "0"); // success, but not really
 			response.put(JsonStrings.Add.Response.result_message, 
 					"You are now watching Channel " + existingStream.getChannel().getId());
@@ -1226,7 +1257,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 							.setMatch(mb.setExact(MatchField.ETH_TYPE, EthType.IPv4)
 									.setExact(MatchField.IP_PROTO, IpProtocol.UDP)
 									.build())
-							.build();
+									.build();
 					found = true;
 					break;
 				}
@@ -1297,7 +1328,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 							factory.buildMatch()
 							.setExact(MatchField.ETH_TYPE, EthType.IPv4)
 							.setExact(MatchField.IP_PROTO, newStream.getChannel().getHostVLCStreamServer().getEgress().getProtocol())
-							.setExact(MatchField.UDP_SRC, newStream.getChannel().getHostVLCStreamServer().getEgress().getPort())
+							.setExact(MatchField.UDP_DST, newStream.getChannel().getHostVLCStreamServer().getEgress().getPort())
 							.setExact(MatchField.IN_PORT, newStream.getChannel().getHostServer().getOVSNode().getIngressPort())
 							.build())
 							.setBufferId(OFBufferId.NO_BUFFER)
@@ -1337,7 +1368,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 							factory.buildMatch()
 							.setExact(MatchField.ETH_TYPE, EthType.IPv4)
 							.setExact(MatchField.IP_PROTO, newStream.getChannel().getHostVLCStreamServer().getEgress().getProtocol())
-							.setExact(MatchField.UDP_SRC, newStream.getChannel().getHostVLCStreamServer().getEgress().getPort())
+							.setExact(MatchField.UDP_DST, newStream.getChannel().getHostVLCStreamServer().getEgress().getPort())
 							.setExact(MatchField.IN_PORT, newStream.getChannel().getSortNode().getIngressPort())
 							.build())
 							.setBufferId(OFBufferId.NO_BUFFER)
@@ -1431,7 +1462,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 								factory.buildMatch()
 								.setExact(MatchField.ETH_TYPE, EthType.IPv4)
 								.setExact(MatchField.IP_PROTO, oldStream.getChannel().getHostVLCStreamServer().getEgress().getProtocol())
-								.setExact(MatchField.UDP_SRC, oldStream.getChannel().getHostVLCStreamServer().getEgress().getPort())
+								.setExact(MatchField.UDP_DST, oldStream.getChannel().getHostVLCStreamServer().getEgress().getPort())
 								.setExact(MatchField.IN_PORT, oldStream.getChannel().getHostServer().getOVSNode().getIngressPort())
 								.build())
 								.setBufferId(OFBufferId.NO_BUFFER)
@@ -1452,13 +1483,13 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 								factory.buildMatch()
 								.setExact(MatchField.ETH_TYPE, EthType.IPv4)
 								.setExact(MatchField.IP_PROTO, oldStream.getChannel().getHostVLCStreamServer().getEgress().getProtocol())
-								.setExact(MatchField.UDP_SRC, oldStream.getChannel().getHostVLCStreamServer().getEgress().getPort())
+								.setExact(MatchField.UDP_DST, oldStream.getChannel().getHostVLCStreamServer().getEgress().getPort())
 								.setExact(MatchField.IN_PORT, oldStream.getChannel().getSortNode().getIngressPort())
 								.build())
 								.setBufferId(OFBufferId.NO_BUFFER)
 								.build(); /* Do not set any actions --> DROP */
 
-				log.debug("Writing OFFlowModify to disable/drop Channel {} on UDP port {} out of the sort OVS Node: " + disableFlow.toString(),
+				log.debug("Writing OFFlowModify to disable/drop Channel {} on UDP dst port {} out of the sort OVS Node: " + disableFlow.toString(),
 						oldStream.getChannel().getId(), oldStream.getChannel().getHostVLCStreamServer().getEgress().getPort().toString());
 
 				switchService.getSwitch(oldStream.getChannel().getSortNode().getSwitchDpid()).write(disableFlow);

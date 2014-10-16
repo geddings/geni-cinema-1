@@ -1,5 +1,6 @@
 package net.floodlightcontroller.genicinema;
 
+import java.util.ArrayList;
 import java.util.Map;
 
 import org.restlet.data.ClientInfo;
@@ -26,7 +27,7 @@ public interface IGENICinemaService extends IFloodlightService {
 	 * Get all available channels in JSON format
 	 * @return The message to be sent back to the client
 	 */
-	public Map<String, Map<String, String>> getChannels();
+	public ArrayList<Map<String, String>> getChannels();
 	
 	/**
 	 * Add a new channel from a JSON string

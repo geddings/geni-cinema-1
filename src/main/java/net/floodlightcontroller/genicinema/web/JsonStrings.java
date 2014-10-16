@@ -15,6 +15,7 @@ public class JsonStrings {
 	private static final String GATEWAY_PROTOCOL = "gateway-protocol";
 	private static final String RESULT = "result";
 	private static final String RESULT_MESSAGE = "message";
+	private static final String AGGREGATE_NAME = "aggregate";
 	
 	public static class Add {
 		public static class Request {
@@ -98,8 +99,9 @@ public class JsonStrings {
 
 		}
 		
-		public static class Respond {
+		public static class Response {
 			public static final String name = NAME;
+			public static final String aggregate_name = AGGREGATE_NAME;
 			public static final String description = DESCRIPTION;
 			public static final String channel_id = CHANNEL_ID;
 			public static final String result = RESULT; // success or failure
