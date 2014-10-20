@@ -81,27 +81,30 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	 * Class variables
 	 */
 
+	/* Used by the garbage collector */
+	private static GENICinemaManager instance;
+
 	/* All available Channels per aggregate per VLC Server */
-	private static Map<String, ArrayList<Channel>> channelsPerAggregate;
+	private volatile static Map<String, ArrayList<Channel>> channelsPerAggregate;
 
 	/* Ongoing Egress Streams */
-	private static Map<String, ArrayList<EgressStream>> egressStreamsPerAggregate;
+	private volatile static Map<String, ArrayList<EgressStream>> egressStreamsPerAggregate;
 
 	/* Ongoing Ingress Streams */
-	private static Map<String, ArrayList<IngressStream>> ingressStreamsPerAggregate;
+	private volatile static Map<String, ArrayList<IngressStream>> ingressStreamsPerAggregate;
 
 	/* All available VLCSS per Server/Gateway */
-	private static Map<Server, ArrayList<VLCStreamServer>> vlcStreamsPerServer;
-	private static Map<Gateway, ArrayList<VLCStreamServer>> vlcStreamsPerEgressGateway;
+	private volatile static Map<Server, ArrayList<VLCStreamServer>> vlcStreamsPerServer;
+	private volatile static Map<Gateway, ArrayList<VLCStreamServer>> vlcStreamsPerEgressGateway;
 
 	/* All Aggregates in the GENI world */
-	private static ArrayList<Aggregate> aggregates;
+	private volatile static ArrayList<Aggregate> aggregates;
 
 	/* All clients (EgressStream's) and Channels will have a unique ID. 
 	 * Perhaps should use UUID or something stronger. */
-	private static int clientIdGenerator = 0;
-	private static int channelIdGenerator = 0;
-	private static int groupIDGenerator = 0;
+	private volatile static int clientIdGenerator = 0;
+	private volatile static int channelIdGenerator = 0;
+	private volatile static int groupIDGenerator = 0;
 
 	/*
 	 * IFloodlightModule implementation
@@ -136,6 +139,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		switchService = context.getServiceImpl(IOFSwitchService.class);
 		restApiService = context.getServiceImpl(IRestApiService.class);
 		log = LoggerFactory.getLogger(GENICinemaManager.class);
+		instance = this;
 	}
 
 	@Override
@@ -209,7 +213,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		int tcpPort = 31000;
 		int udpPort = 32000;
 
-		for (int i = 0; i < 2; i++) {
+		for (int i = 0; i < 100; i++) {
 			vsb.setIP(server.getPublicIP())
 			.setPort(TransportPort.of(tcpPort++)) // will need to set this port
 			.setProtocol(IpProtocol.TCP);
@@ -227,7 +231,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		// now do the egress gateway's
 		udpPort = 32000;
 		tcpPort = 33000;
-		for (int i = 0; i < 10; i++) {
+		for (int i = 0; i < 100; i++) {
 			vsb.setIP(egress_gw.getPublicIP())
 			.setPort(TransportPort.of(tcpPort++)) // will need to set this port
 			.setProtocol(IpProtocol.TCP);
@@ -343,7 +347,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	 */
 
 	@Override
-	public ArrayList<Map<String, String>> getChannels() {
+	public synchronized ArrayList<Map<String, String>> getChannels() {
 		ArrayList<Map<String, String>> response = new ArrayList<Map<String, String>>();
 
 		for (Aggregate aggregate : aggregates) {
@@ -363,7 +367,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				}
 			}
 		}
-		
+
 		Map<String, String> result = new HashMap<String, String>();
 		if (response.isEmpty()) {
 			result.put(JsonStrings.Query.Response.result, "1");
@@ -379,13 +383,13 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	}
 
 	@Override
-	public Map<String, String> clientKeepAlive(String json, ClientInfo clientInfo) {
+	public synchronized Map<String, String> clientKeepAlive(String json, ClientInfo clientInfo) {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
 	@Override
-	public Map<String, String> addChannel(String json, ClientInfo clientInfo) {
+	public synchronized Map<String, String> addChannel(String json, ClientInfo clientInfo) {
 		/* 
 		 * This will presumably get us the client IP of the most recent hop.
 		 * e.g. If NAT is involved between us and the client, this should
@@ -560,13 +564,13 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	}
 
 	@Override
-	public String removeChannel(String json, ClientInfo clientInfo) {
+	public synchronized String removeChannel(String json, ClientInfo clientInfo) {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
 	@Override
-	public Map<String, String> watchChannel(String json, ClientInfo clientInfo) {
+	public synchronized Map<String, String> watchChannel(String json, ClientInfo clientInfo) {
 
 		String clientIP = clientInfo.getAddress(); 
 
@@ -808,7 +812,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	}
 
 	@Override
-	public String editChannel(String json, ClientInfo clientInfo) {
+	public synchronized String editChannel(String json, ClientInfo clientInfo) {
 		// TODO Auto-generated method stub
 		return "";
 	}
@@ -1504,5 +1508,26 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				// return the group to the list it was checked out from.
 			}
 		}
+	}
+
+	/**
+	 * Used by the StreamGarbageCollector to get a handle on the manager. This
+	 * isn't a true singleton, since the default constructor must be public for
+	 * the ModuleLoader to instantiate the GENICinemaManager module.
+	 * 
+	 * @return The pseudo-singleton instance of the manager.
+	 */
+	protected static GENICinemaManager getInstance() {
+		return instance;
+	}
+	
+	/**
+	 * Every client has a time field of when it was last modified. If the client
+	 * has been dormant for X amount of time, return the client's resources to the
+	 * pool of available resources so that another client can connect and use them.
+	 * This is greedy and does not account for clients 
+	 */
+	protected synchronized void cleanUpOldClients() {
+		
 	}
 }
