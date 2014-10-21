@@ -6,6 +6,8 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import org.projectfloodlight.openflow.protocol.OFBucket;
 import org.projectfloodlight.openflow.protocol.OFFactory;
@@ -83,6 +85,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 
 	/* Used by the garbage collector */
 	private static GENICinemaManager instance;
+	private static ScheduledThreadPoolExecutor clientGarbageCollectorExecutor;
+	private static Runnable clientGarbageCollector;
 
 	/* All available Channels per aggregate per VLC Server */
 	private volatile static Map<String, ArrayList<Channel>> channelsPerAggregate;
@@ -245,6 +249,15 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			.setEgress(pubSock);
 			vlcStreamsPerEgressGateway.get(egress_gw).add(vlcssb.build());
 		}
+
+		/*
+		 * Lastly, start the garbage collector timer.
+		 */
+		clientGarbageCollectorExecutor = new ScheduledThreadPoolExecutor(1);
+		clientGarbageCollector = new StreamGarbageCollector();
+		clientGarbageCollectorExecutor.scheduleAtFixedRate(clientGarbageCollector, 1800, 
+				1800, TimeUnit.SECONDS);
+
 	}
 
 	/*
@@ -422,9 +435,6 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 
 				String n = jp.getCurrentName();
 				jp.nextToken();
-				if (jp.getText().equals("")) {
-					continue;
-				}
 
 				/*
 				 * Parse values from all expected JSON fields.
@@ -548,6 +558,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 					"Could not add the allocated channel to the GENI Cinema Service. Please try again and contact the admins if the problem persists.");
 			return response;
 		}
+		
+		insertNewChannelDropFlows(theChannel);
 
 		response.put(JsonStrings.Add.Response.result, "0");
 		response.put(JsonStrings.Add.Response.result_message, 
@@ -598,9 +610,6 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 
 				String n = jp.getCurrentName();
 				jp.nextToken();
-				if (jp.getText().equals("")) {
-					continue;
-				}
 
 				/*
 				 * Parse values from all expected JSON fields.
@@ -632,7 +641,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * TODO We should probably send a JSON description of 
 		 * the error condition back instead of an empty string.
 		 */
-		if (reqFields < 2 || (reqFields == 3 && json_clientId.equals(""))) {
+		if (reqFields < 3) {
 			log.error("Did not receive all expected JSON fields in Add request! Only got {} matches. CHANNEL NOT ADDED.", reqFields);
 			response.put(JsonStrings.Add.Response.result, "1");
 			response.put(JsonStrings.Add.Response.result_message, "Did not receive all expected JSON fields in Watch request.");
@@ -1275,6 +1284,31 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		}
 	}
 
+	private void insertNewChannelDropFlows(Channel newChannel) {
+		if (!newChannel.getDemand()) { // check just to be safe
+			OFFactory factory = switchService.getSwitch(newChannel.getHostServer().getOVSNode().getSwitchDpid()).getOFFactory();
+			/*
+			 * Construct the Match for UDP source port of the Channel.
+			 * Build the OFFlowDelete with the Match and List<OFInstruction> (from above).
+			 */
+			OFFlowAdd disableFlow = factory.buildFlowAdd()
+					.setMatch(
+							factory.buildMatch()
+							.setExact(MatchField.ETH_TYPE, EthType.IPv4)
+							.setExact(MatchField.IP_PROTO, newChannel.getHostVLCStreamServer().getEgress().getProtocol())
+							.setExact(MatchField.UDP_DST, newChannel.getHostVLCStreamServer().getEgress().getPort())
+							.setExact(MatchField.IN_PORT, newChannel.getHostServer().getOVSNode().getIngressPort())
+							.build())
+							.setBufferId(OFBufferId.NO_BUFFER)
+							.build(); /* Do not set any actions --> DROP */
+
+			log.debug("Writing OFFlowAdd to disable/drop Channel {} on UDP port {} out of the VLCS: " + disableFlow.toString(),
+					newChannel.getId(), newChannel.getHostVLCStreamServer().getEgress().getPort().toString());
+
+			switchService.getSwitch(newChannel.getHostServer().getOVSNode().getSwitchDpid()).write(disableFlow);
+		}
+	}
+	
 	/**
 	 * Push all flows required for this EgressStream to the client.
 	 * Prerequisite requirement: All Channel information must be 
@@ -1327,7 +1361,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			 * Construct the Match for UDP source port of the Channel.
 			 * Build the OFFlowAdd with the Match and List<OFInstruction> (from above).
 			 */
-			OFFlowAdd enableFlow = factory.buildFlowAdd()
+			OFFlowModify enableFlow = factory.buildFlowModify()
 					.setMatch(
 							factory.buildMatch()
 							.setExact(MatchField.ETH_TYPE, EthType.IPv4)
@@ -1352,7 +1386,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			 * correct OFGroup, which will then duplicate.
 			 * ********************************************/
 
-			if (newStream.getChannel().getGroup() == OFGroup.ZERO) {
+			if (newStream.getChannel().getGroup() == OFGroup.ZERO || newStream.getChannel().getGroup() == null) {
 				newStream.getChannel().setGroup(generateOFGroup());
 			}
 
@@ -1520,7 +1554,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	protected static GENICinemaManager getInstance() {
 		return instance;
 	}
-	
+
 	/**
 	 * Every client has a time field of when it was last modified. If the client
 	 * has been dormant for X amount of time, return the client's resources to the
@@ -1528,6 +1562,6 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	 * This is greedy and does not account for clients 
 	 */
 	protected synchronized void cleanUpOldClients() {
-		
+
 	}
 }

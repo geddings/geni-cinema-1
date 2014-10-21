@@ -1,5 +1,7 @@
 package net.floodlightcontroller.genicinema;
 
+import java.util.Date;
+
 
 /**
  * A representation of the information relevant to a outbound
@@ -33,12 +35,18 @@ public class EgressStream {
 	 */
 	private VideoSocket client;
 	
+	/*
+	 * Keep track of when the client was last active.
+	 */
+	private Date lastActive;
+	
 	private EgressStream(Channel channel, int clientId,
-			VLCStreamServer gateway, VideoSocket client) {
+			VLCStreamServer gateway, VideoSocket client, Date lastActive) {
 		this.channel = channel;
 		this.clientId = clientId;
 		this.gateway = gateway;
 		this.client = client;
+		this.lastActive = lastActive;
 	}
 	
 	public Channel getChannel() {
@@ -59,6 +67,14 @@ public class EgressStream {
 	
 	public VideoSocket getClient() {
 		return this.client;
+	}
+	
+	public Date getActiveLast() {
+		return this.lastActive;
+	}
+	
+	public void setActiveNow() {
+		this.lastActive.setTime(System.currentTimeMillis());
 	}
 	
 	public EgressStreamBuilder createBuilder() {
@@ -87,6 +103,8 @@ public class EgressStream {
 		result = prime * result + ((client == null) ? 0 : client.hashCode());
 		result = prime * result + clientId;
 		result = prime * result + ((gateway == null) ? 0 : gateway.hashCode());
+		result = prime * result
+				+ ((lastActive == null) ? 0 : lastActive.hashCode());
 		return result;
 	}
 
@@ -116,6 +134,11 @@ public class EgressStream {
 				return false;
 		} else if (!gateway.equals(other.gateway))
 			return false;
+		if (lastActive == null) {
+			if (other.lastActive != null)
+				return false;
+		} else if (!lastActive.equals(other.lastActive))
+			return false;
 		return true;
 	}
 	
@@ -124,12 +147,14 @@ public class EgressStream {
 		private int b_clientId;
 		private VLCStreamServer b_gateway;
 		private VideoSocket b_client;
+		private Date b_lastActive;
 		
 		public EgressStreamBuilder() {
 			this.b_channel = null;
 			this.b_clientId = -1;
 			this.b_gateway = null;
 			this.b_client = null;
+			this.b_lastActive = new Date();
 		}
 		
 		private EgressStreamBuilder(EgressStream egressStream) {
@@ -137,6 +162,7 @@ public class EgressStream {
 			this.b_clientId = egressStream.clientId;
 			this.b_gateway = egressStream.gateway;
 			this.b_client = egressStream.client;
+			this.b_lastActive = egressStream.lastActive;
 		}
 		
 		public EgressStreamBuilder setChannel(Channel channel) {
@@ -168,7 +194,7 @@ public class EgressStream {
 		
 		public EgressStream build() {
 			checkAllSet();
-			return new EgressStream(this.b_channel, this.b_clientId, this.b_gateway, this.b_client);
+			return new EgressStream(this.b_channel, this.b_clientId, this.b_gateway, this.b_client, b_lastActive);
 		}
 		
 		@Override
@@ -182,6 +208,8 @@ public class EgressStream {
 			.append(this.b_gateway.toString())
 			.append(", client=")
 			.append(this.b_client.toString())
+			.append(", last-active=")
+			.append(this.b_lastActive.toString())
 			.toString();
 		}
 	}

@@ -6,13 +6,13 @@ public class JsonStrings {
 	 */
 	private static final String NAME = "name";
 	private static final String DESCRIPTION = "description";
-	private static final String VIEW_PASSWORD = "view-password";
-	private static final String ADMIN_PASSWORD = "admin-password";
-	private static final String CHANNEL_ID = "channel-id";
-	private static final String CLIENT_ID = "client-id";
-	private static final String GATEWAY_IP = "gateway-ip";
-	private static final String GATEWAY_PORT = "gateway-port";
-	private static final String GATEWAY_PROTOCOL = "gateway-protocol";
+	private static final String VIEW_PASSWORD = "view_password";
+	private static final String ADMIN_PASSWORD = "admin_password";
+	private static final String CHANNEL_ID = "channel_id";
+	private static final String CLIENT_ID = "client_id";
+	private static final String GATEWAY_IP = "gateway_ip";
+	private static final String GATEWAY_PORT = "gateway_port";
+	private static final String GATEWAY_PROTOCOL = "gateway_protocol";
 	private static final String RESULT = "result";
 	private static final String RESULT_MESSAGE = "message";
 	private static final String AGGREGATE_NAME = "aggregate";
