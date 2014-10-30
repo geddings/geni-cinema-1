@@ -1,6 +1,8 @@
 package net.floodlightcontroller.genicinema.web;
 
 public class JsonStrings {
+	private JsonStrings() {}; // prevent instantiation for this and all inner classes
+	
 	/*
 	 * Reusable strings for all message types.
 	 */
@@ -18,7 +20,10 @@ public class JsonStrings {
 	private static final String AGGREGATE_NAME = "aggregate";
 	
 	public static class Add {
+		private Add() {};
+		
 		public static class Request {
+			private Request() {};
 			public static final String name = NAME;
 			public static final String description = DESCRIPTION;
 			public static final String view_password = VIEW_PASSWORD;
@@ -26,6 +31,7 @@ public class JsonStrings {
 		}
 
 		public static class Response {
+			private Response() {};
 			public static final String name = Add.Request.name;
 			public static final String description = Add.Request.description;
 			public static final String view_password = Add.Request.view_password;
@@ -40,13 +46,16 @@ public class JsonStrings {
 	}
 	
 	public static class Watch {
+		private Watch() {};
 		public static class Request {
+			private Request() {};
 			public static final String client_id = CLIENT_ID;
 			public static final String channel_id = CHANNEL_ID;
 			public static final String view_password = VIEW_PASSWORD;
 		}
 
 		public static class Response {
+			private Response() {};
 			public static final String name = NAME;
 			public static final String description = DESCRIPTION;
 			public static final String channel_id = Watch.Request.channel_id;
@@ -60,19 +69,24 @@ public class JsonStrings {
 	}
 
 	public static class Remove {
+		private Remove() {};
 		public static class Request {
+			private Request() {};
 			public static final String channel_id = CHANNEL_ID;
 			public static final String admin_password = ADMIN_PASSWORD;
 		}
 
 		public static class Respond {
+			private Respond() {};
 			public static final String result = RESULT; // success or failure
 			public static final String result_message = RESULT_MESSAGE;
 		}
 	}
 
 	public static class Modify {
+		private Modify() {};
 		public static class Request {
+			private Request() {};
 			public static final String channel_id = CHANNEL_ID;
 			public static final String name = NAME;
 			public static final String description = DESCRIPTION;
@@ -81,6 +95,7 @@ public class JsonStrings {
 		}
 
 		public static class Respond {
+			private Respond() {};
 			public static final String channel_id = Modify.Request.channel_id;
 			public static final String name = Modify.Request.name;
 			public static final String description = Modify.Request.description;
@@ -95,11 +110,13 @@ public class JsonStrings {
 	}
 
 	public static class Query {
+		private Query() {};
 		public static class Request {
-
+			private Request() {};
 		}
 		
 		public static class Response {
+			private Response() {};
 			public static final String name = NAME;
 			public static final String aggregate_name = AGGREGATE_NAME;
 			public static final String description = DESCRIPTION;

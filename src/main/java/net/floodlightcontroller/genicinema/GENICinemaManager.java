@@ -177,7 +177,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		vlcStreamsPerEgressGateway.put(egress_gw, new ArrayList<VLCStreamServer>());
 
 		Node server_ovs = new Node.NodeBuilder()
-		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:00:02"))
+		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:00:02")) // was 00:02
 		.setIngressPort(OFPort.LOCAL)
 		.setEgressPort(OFPort.of(1)) // should be correct now
 		.build();
@@ -189,7 +189,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		vlcStreamsPerServer.put(server, new ArrayList<VLCStreamServer>());
 
 		Node ovs_switch = new Node.NodeBuilder()
-		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:00:01"))
+		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:00:01")) // was 00:01
 		.setIngressPort(OFPort.of(1)) // should be correct now
 		.setEgressPort(OFPort.of(2))
 		.build();
