@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.projectfloodlight.openflow.protocol.OFFactories;
 import org.projectfloodlight.openflow.protocol.OFFlowMod;
+import org.projectfloodlight.openflow.protocol.OFVersion;
 import org.projectfloodlight.openflow.protocol.instruction.OFInstruction;
 import org.projectfloodlight.openflow.protocol.instruction.OFInstructionApplyActions;
 import org.projectfloodlight.openflow.protocol.instruction.OFInstructionClearActions;
@@ -17,8 +18,6 @@ import org.projectfloodlight.openflow.types.TableId;
 import org.projectfloodlight.openflow.types.U64;
 import org.slf4j.Logger;
 
-import sun.reflect.generics.reflectiveObjects.NotImplementedException;
-
 /**
  * Convert OFInstructions to and from dpctl/ofctl-style strings.
  * Used primarily by the static flow pusher to store and retreive
@@ -28,13 +27,13 @@ import sun.reflect.generics.reflectiveObjects.NotImplementedException;
  *
  */
 public class InstructionUtils {
-	public static final String STR_GOTO_TABLE = "goto_table";
-	public static final String STR_WRITE_METADATA = "write_metadata";
-	public static final String STR_WRITE_ACTIONS = "write_actions";
-	public static final String STR_APPLY_ACTIONS = "apply_actions";
-	public static final String STR_CLEAR_ACTIONS = "clear_actions";
-	public static final String STR_GOTO_METER = "goto_meter";
-	public static final String STR_EXPERIMENTER = "experimenter";
+	public static final String STR_GOTO_TABLE = "instruction_goto_table";
+	public static final String STR_WRITE_METADATA = "instruction_write_metadata";
+	public static final String STR_WRITE_ACTIONS = "instruction_write_actions";
+	public static final String STR_APPLY_ACTIONS = "instruction_apply_actions";
+	public static final String STR_CLEAR_ACTIONS = "instruction_clear_actions";
+	public static final String STR_GOTO_METER = "instruction_goto_meter";
+	public static final String STR_EXPERIMENTER = "instruction_experimenter";
 
 	private static final String STR_SUB_WRITE_METADATA_METADATA = "metadata";
 	private static final String STR_SUB_WRITE_METADATA_MASK = "mask";
@@ -88,8 +87,14 @@ public class InstructionUtils {
 	 */
 	public static void gotoTableFromString(OFFlowMod.Builder fmb, String instStr, Logger log) {
 		if (instStr == null || instStr.equals("")) {
-			return; //TODO @Ryan fail silently?
+			return;
 		}
+		
+		if (fmb.getVersion().compareTo(OFVersion.OF_11) < 0) {
+			log.error("Goto Table Instruction not supported in OpenFlow 1.0");
+			return;
+		}
+		
 		// Split into pairs of key=value
 		String[] keyValue = instStr.split("=");
 		if (keyValue.length != 2) {
@@ -111,7 +116,8 @@ public class InstructionUtils {
 	 * @return
 	 */
 	public static String writeMetadataToString(OFInstructionWriteMetadata inst, Logger log) {
-		/*TODO @Ryan U64.toString()'s look like they format with a leading 0x. getLong() will allow us to work with just the value
+		/* 
+		 * U64.toString() looks like it formats with a leading 0x. getLong() will allow us to work with just the value
 		 * For the rest api though, will the user provide a hex value or a long? I'd guess a hex value would be more useful.
 		 */
 		return STR_SUB_WRITE_METADATA_METADATA + "=" + Long.toString(inst.getMetadata().getValue()) + "," + STR_SUB_WRITE_METADATA_MASK + "=" + Long.toString(inst.getMetadataMask().getValue());
@@ -128,8 +134,14 @@ public class InstructionUtils {
 	 */
 	public static void writeMetadataFromString(OFFlowMod.Builder fmb, String inst, Logger log) {
 		if (inst == null || inst.equals("")) {
-			return; // TODO @Ryan quietly fail?
+			return;
 		}
+		
+		if (fmb.getVersion().compareTo(OFVersion.OF_11) < 0) {
+			log.error("Write Metadata Instruction not supported in OpenFlow 1.0");
+			return;
+		}
+		
 		// Split into pairs of key=value
 		String[] tokens = inst.split(",");
 		if (tokens.length != 2) {
@@ -168,7 +180,7 @@ public class InstructionUtils {
 	 * @param log
 	 * @return
 	 */
-	public static String writeActionsToString(OFInstructionWriteActions inst, Logger log) {
+	public static String writeActionsToString(OFInstructionWriteActions inst, Logger log) throws Exception {
 		return ActionUtils.actionsToString(inst.getActions(), log);
 	}
 
@@ -182,6 +194,12 @@ public class InstructionUtils {
 	 * @param log
 	 */
 	public static void writeActionsFromString(OFFlowMod.Builder fmb, String inst, Logger log) {
+		
+		if (fmb.getVersion().compareTo(OFVersion.OF_11) < 0) {
+			log.error("Write Actions Instruction not supported in OpenFlow 1.0");
+			return;
+		}
+		
 		OFFlowMod.Builder tmpFmb = OFFactories.getFactory(fmb.getVersion()).buildFlowModify(); // ActionUtils.fromString() will use setActions(), which should not be used for OF1.3; use temp to avoid overwriting any applyActions data
 		OFInstructionWriteActions.Builder ib = OFFactories.getFactory(fmb.getVersion()).instructions().buildWriteActions();
 		ActionUtils.fromString(tmpFmb, inst, log);
@@ -199,7 +217,7 @@ public class InstructionUtils {
 	 * @param log
 	 * @return
 	 */
-	public static String applyActionsToString(OFInstructionApplyActions inst, Logger log) {
+	public static String applyActionsToString(OFInstructionApplyActions inst, Logger log) throws Exception {
 		return ActionUtils.actionsToString(inst.getActions(), log);
 	}
 
@@ -213,6 +231,12 @@ public class InstructionUtils {
 	 * @param log
 	 */
 	public static void applyActionsFromString(OFFlowMod.Builder fmb, String inst, Logger log) {
+		
+		if (fmb.getVersion().compareTo(OFVersion.OF_11) < 0) {
+			log.error("Apply Actions Instruction not supported in OpenFlow 1.0");
+			return;
+		}
+		
 		OFFlowMod.Builder tmpFmb = OFFactories.getFactory(fmb.getVersion()).buildFlowModify();
 		OFInstructionApplyActions.Builder ib = OFFactories.getFactory(fmb.getVersion()).instructions().buildApplyActions();
 		ActionUtils.fromString(tmpFmb, inst, log);
@@ -244,6 +268,12 @@ public class InstructionUtils {
 	 * @param log
 	 */
 	public static void clearActionsFromString(OFFlowMod.Builder fmb, String inst, Logger log) {
+		
+		if (fmb.getVersion().compareTo(OFVersion.OF_11) < 0) {
+			log.error("Clear Actions Instruction not supported in OpenFlow 1.0");
+			return;
+		}
+		
 		if (inst != null && inst.isEmpty()) {
 			OFInstructionClearActions i = OFFactories.getFactory(fmb.getVersion()).instructions().clearActions();
 			log.debug("Appending ClearActions instruction: {}", i);
@@ -277,8 +307,13 @@ public class InstructionUtils {
 	 * @param log
 	 */
 	public static void meterFromString(OFFlowMod.Builder fmb, String inst, Logger log) {
-		if (inst == null || inst.equals("")) {
-			return; // TODO @Ryan quietly fail?
+		if (inst == null || inst.isEmpty()) {
+			return;
+		}
+		
+		if (fmb.getVersion().compareTo(OFVersion.OF_13) < 0) {
+			log.error("Goto Meter Instruction not supported in OpenFlow 1.0, 1.1, or 1.2");
+			return;
 		}
 
 		OFInstructionMeter.Builder ib = OFFactories.getFactory(fmb.getVersion()).instructions().buildMeter();
@@ -321,8 +356,9 @@ public class InstructionUtils {
 	 * @param instStr; The string to parse the instruction from
 	 * @param log
 	 */
-	public static void experimenterFromString(OFFlowMod.Builder fmb, String inst, Logger log) throws NotImplementedException {
-		throw new NotImplementedException();
+	public static void experimenterFromString(OFFlowMod.Builder fmb, String inst, Logger log) {
+		/* TODO This is a no-op right now. */
+		
 		/*
 		if (inst == null || inst.equals("")) {
 			return; // TODO @Ryan quietly fail?

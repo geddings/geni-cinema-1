@@ -138,12 +138,13 @@ public class LinkDiscoveryManagerTest extends FloodlightTestCase {
         IDebugEventService debugEventService = new MockDebugEventService();
         MockThreadPoolService tp = new MockThreadPoolService();
         RestApiServer restApi = new RestApiServer();
+        MemoryStorageSource storageService = new MemoryStorageSource();
         cntx.addService(IRestApiService.class, restApi);
         cntx.addService(IThreadPoolService.class, tp);
         cntx.addService(IRoutingService.class, routingEngine);
         cntx.addService(ILinkDiscoveryService.class, ldm);
         cntx.addService(ITopologyService.class, ldm);
-        cntx.addService(IStorageSourceService.class, new MemoryStorageSource());
+        cntx.addService(IStorageSourceService.class, storageService);
         cntx.addService(IFloodlightProviderService.class, getMockFloodlightProvider());
         cntx.addService(IDebugCounterService.class, debugCounterService);
         cntx.addService(IDebugEventService.class, debugEventService);
@@ -151,6 +152,8 @@ public class LinkDiscoveryManagerTest extends FloodlightTestCase {
         restApi.init(cntx);
         tp.init(cntx);
         routingEngine.init(cntx);
+        storageService.init(cntx);
+        storageService.startUp(cntx);
         ldm.init(cntx);
         restApi.startUp(cntx);
         tp.startUp(cntx);

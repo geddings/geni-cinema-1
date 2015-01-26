@@ -29,6 +29,7 @@ import static org.junit.Assert.*;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -37,6 +38,7 @@ import org.easymock.CaptureType;
 import org.easymock.EasyMock;
 import org.junit.Before;
 import org.junit.Test;
+import org.projectfloodlight.openflow.protocol.OFFactory;
 import org.projectfloodlight.openflow.protocol.OFFlowMod;
 import org.projectfloodlight.openflow.protocol.OFFactories;
 import org.projectfloodlight.openflow.protocol.OFMessage;
@@ -71,8 +73,6 @@ import net.floodlightcontroller.devicemanager.IDeviceService;
 import net.floodlightcontroller.devicemanager.IEntityClassifierService;
 import net.floodlightcontroller.devicemanager.internal.DefaultEntityClassifier;
 import net.floodlightcontroller.devicemanager.test.MockDeviceManager;
-import net.floodlightcontroller.flowcache.FlowReconcileManager;
-import net.floodlightcontroller.flowcache.IFlowReconcileService;
 import net.floodlightcontroller.packet.ARP;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.ICMP;
@@ -90,6 +90,7 @@ import net.floodlightcontroller.test.FloodlightTestCase;
 import net.floodlightcontroller.threadpool.IThreadPoolService;
 import net.floodlightcontroller.topology.ITopologyService;
 import net.floodlightcontroller.topology.NodePortTuple;
+import net.floodlightcontroller.util.OFMessageUtils;
 
 public class LoadBalancerTest extends FloodlightTestCase {
 	protected LoadBalancer lb;
@@ -98,7 +99,6 @@ public class LoadBalancerTest extends FloodlightTestCase {
 	protected FloodlightModuleContext fmc;
 	protected MockDeviceManager deviceManager;
 	protected MockThreadPoolService tps;
-	protected FlowReconcileManager frm;
 	protected DefaultEntityClassifier entityClassifier;
 	protected IRoutingService routingEngine;
 	protected ITopologyService topology;
@@ -114,18 +114,20 @@ public class LoadBalancerTest extends FloodlightTestCase {
 	protected LBVip vip1, vip2;
 	protected LBPool pool1, pool2, pool3;
 	protected LBMember member1, member2, member3, member4;
+	private OFFactory factory;
 
 	@Override
 	@Before
 	public void setUp() throws Exception {
 		super.setUp();
 
+		factory = OFFactories.getFactory(OFVersion.OF_13);
+		
 		lb = new LoadBalancer();
 
 		cntx = new FloodlightContext();
 		fmc = new FloodlightModuleContext();
 		entityClassifier = new DefaultEntityClassifier(); // dependency for device manager
-		frm = new FlowReconcileManager(); //dependency for device manager
 		tps = new MockThreadPoolService(); //dependency for device manager
 		deviceManager = new MockDeviceManager();
 		topology = createMock(ITopologyService.class);
@@ -140,7 +142,6 @@ public class LoadBalancerTest extends FloodlightTestCase {
 		fmc.addService(IRestApiService.class, restApi);
 		fmc.addService(IFloodlightProviderService.class, getMockFloodlightProvider());
 		fmc.addService(IEntityClassifierService.class, entityClassifier);
-		fmc.addService(IFlowReconcileService.class, frm);
 		fmc.addService(IThreadPoolService.class, tps);
 		fmc.addService(IDeviceService.class, deviceManager);
 		fmc.addService(ITopologyService.class, topology);
@@ -154,9 +155,8 @@ public class LoadBalancerTest extends FloodlightTestCase {
 		fmc.addService(IOFSwitchService.class, getMockSwitchService());
 
 		lb.init(fmc);
-		getMockFloodlightProvider().init(fmc);
+		//getMockFloodlightProvider().init(fmc);
 		entityClassifier.init(fmc);
-		frm.init(fmc);
 		tps.init(fmc);
 		mockSyncService.init(fmc);
 		deviceManager.init(fmc);
@@ -169,9 +169,8 @@ public class LoadBalancerTest extends FloodlightTestCase {
 		replay(topology);
 
 		lb.startUp(fmc);
-		getMockFloodlightProvider().startUp(fmc);
+		//getMockFloodlightProvider().startUp(fmc);
 		entityClassifier.startUp(fmc);
-		frm.startUp(fmc);
 		tps.startUp(fmc);
 		mockSyncService.startUp(fmc);
 		deviceManager.startUp(fmc);
@@ -443,14 +442,15 @@ public class LoadBalancerTest extends FloodlightTestCase {
 		sw1 = EasyMock.createNiceMock(IOFSwitch.class);
 		expect(sw1.getId()).andReturn(DatapathId.of(1L)).anyTimes();
 		expect(sw1.hasAttribute(IOFSwitch.PROP_SUPPORTS_OFPP_TABLE)).andReturn(true).anyTimes();
-		expect(sw1.getOFFactory()).andReturn(OFFactories.getFactory(OFVersion.OF_13)).anyTimes();
+		expect(sw1.getOFFactory()).andReturn(factory).anyTimes();
 		sw1.write(capture(wc1));
 		expectLastCall().anyTimes();
 		sw1.flush();
 		expectLastCall().anyTimes();
-
+		
 		replay(sw1);
 		sfp.switchAdded(DatapathId.of(1L));
+		
 		verify(sw1);
 
 		/* Test plan:
@@ -475,7 +475,6 @@ public class LoadBalancerTest extends FloodlightTestCase {
 		expect(topology.isAttachmentPointPort(DatapathId.of(1L), OFPort.of(4))).andReturn(true).anyTimes();
 		replay(topology);
 
-
 		// Build arp packets
 		arpRequest1 = new Ethernet()
 		.setSourceMACAddress("00:00:00:00:00:01")
@@ -497,8 +496,8 @@ public class LoadBalancerTest extends FloodlightTestCase {
 
 		arpRequest1Serialized = arpRequest1.serialize();
 
-		arpRequestPacketIn1 = OFFactories.getFactory(OFVersion.OF_13).buildPacketIn()
-				.setMatch(OFFactories.getFactory(OFVersion.OF_13).buildMatch().setExact(MatchField.IN_PORT, OFPort.of(1)).build())
+		arpRequestPacketIn1 = factory.buildPacketIn()
+				.setMatch(factory.buildMatch().setExact(MatchField.IN_PORT, OFPort.of(1)).build())
 				.setBufferId(OFBufferId.NO_BUFFER)
 				.setData(arpRequest1Serialized)
 				.setReason(OFPacketInReason.NO_MATCH)
@@ -530,14 +529,16 @@ public class LoadBalancerTest extends FloodlightTestCase {
 		arpReply1Serialized = arpReply1.serialize();
 
 		List<OFAction> poactions = new ArrayList<OFAction>();
-		poactions.add(OFFactories.getFactory(OFVersion.OF_13).actions().output(arpRequestPacketIn1.getMatch().get(MatchField.IN_PORT), (short) 0xffff));
-		arpReplyPacketOut1 = OFFactories.getFactory(OFVersion.OF_13).buildPacketOut()
+		poactions.add(factory.actions().output(arpRequestPacketIn1.getMatch().get(MatchField.IN_PORT), Integer.MAX_VALUE));
+		arpReplyPacketOut1 = factory.buildPacketOut()
 				.setBufferId(OFBufferId.NO_BUFFER)
 				.setInPort(OFPort.ANY)
 				.setActions(poactions)
 				.setData(arpReply1Serialized)
+				.setXid(22)
 				.build();
-
+		sw1.write(arpReplyPacketOut1);
+		
 		lb.receive(sw1, arpRequestPacketIn1, cntx);
 		verify(sw1, topology);
 
@@ -547,7 +548,7 @@ public class LoadBalancerTest extends FloodlightTestCase {
 
 		for (OFMessage m: msglist1) {
 			if (m instanceof OFPacketOut)
-				assertEquals(arpReplyPacketOut1, m);
+				assertTrue(OFMessageUtils.equalsIgnoreXid(arpReplyPacketOut1, m));
 			else
 				assertTrue(false); // unexpected message
 		}
@@ -556,6 +557,12 @@ public class LoadBalancerTest extends FloodlightTestCase {
 		// Skip arpRequest2 test - in reality this will happen, but for unit test the same logic
 		// is already validated with arpRequest1 test above
 		//
+		
+		// Keep the StaticFlowEntryPusher happy with a switch in the switch service
+		Map<DatapathId, IOFSwitch> switches = new HashMap<DatapathId, IOFSwitch>(1);
+		switches.put(DatapathId.of(1), sw1);
+		getMockSwitchService().setSwitches(switches);
+
 
 		// Build icmp packets
 		icmpPacket1 = new Ethernet()
@@ -577,7 +584,7 @@ public class LoadBalancerTest extends FloodlightTestCase {
 
 		icmpPacketIn1 = OFFactories.getFactory(OFVersion.OF_13).buildPacketIn()
 				.setBufferId(OFBufferId.NO_BUFFER)
-				.setInPort(OFPort.of(1))
+				.setMatch(OFFactories.getFactory(OFVersion.OF_13).buildMatch().setExact(MatchField.IN_PORT, OFPort.of(1)).build())
 				.setData(icmpPacket1Serialized)
 				.setReason(OFPacketInReason.NO_MATCH)
 				.build();
@@ -600,7 +607,7 @@ public class LoadBalancerTest extends FloodlightTestCase {
 
 		icmpPacketIn2 = OFFactories.getFactory(OFVersion.OF_13).buildPacketIn()
 				.setBufferId(OFBufferId.NO_BUFFER)
-				.setInPort(OFPort.of(2))
+				.setMatch(OFFactories.getFactory(OFVersion.OF_13).buildMatch().setExact(MatchField.IN_PORT, OFPort.of(2)).build())
 				.setData(icmpPacket2Serialized)
 				.setReason(OFPacketInReason.NO_MATCH)
 				.build();

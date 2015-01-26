@@ -27,6 +27,7 @@ import net.floodlightcontroller.core.internal.IOFSwitchService;
 
 import org.projectfloodlight.openflow.protocol.OFFeaturesReply;
 import org.projectfloodlight.openflow.protocol.match.Match;
+import org.projectfloodlight.openflow.protocol.ver13.OFMeterSerializerVer13;
 import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.OFPort;
 import org.projectfloodlight.openflow.types.TableId;
@@ -34,6 +35,7 @@ import org.projectfloodlight.openflow.protocol.OFFeaturesRequest;
 import org.projectfloodlight.openflow.protocol.OFStatsReply;
 import org.projectfloodlight.openflow.protocol.OFStatsRequest;
 import org.projectfloodlight.openflow.protocol.OFStatsType;
+import org.projectfloodlight.openflow.protocol.OFVersion;
 import org.restlet.resource.ResourceException;
 import org.restlet.resource.ServerResource;
 import org.slf4j.Logger;
@@ -114,20 +116,73 @@ public class SwitchResourceBase extends ServerResource {
 				.build();
 				break;
 			case DESC:
-			case TABLE:
 				// pass - nothing todo besides set the type above
 				req = sw.getOFFactory().buildDescStatsRequest()
 				.build();
 				break;
-			case EXPERIMENTER: //TODO @Ryan support new OF1.1+ stats types
 			case GROUP:
-			case GROUP_DESC:
-			case GROUP_FEATURES:
+				if (sw.getOFFactory().getVersion().compareTo(OFVersion.OF_10) > 0) {
+					req = sw.getOFFactory().buildGroupStatsRequest()				
+							.build();
+				}
+				break;
+
 			case METER:
+				if (sw.getOFFactory().getVersion().compareTo(OFVersion.OF_13) >= 0) {
+					req = sw.getOFFactory().buildMeterStatsRequest()
+							.setMeterId(OFMeterSerializerVer13.ALL_VAL)
+							.build();
+				}
+				break;
+
+			case GROUP_DESC:			
+				if (sw.getOFFactory().getVersion().compareTo(OFVersion.OF_10) > 0) {
+					req = sw.getOFFactory().buildGroupDescStatsRequest()			
+							.build();
+				}
+				break;
+
+			case GROUP_FEATURES:
+				if (sw.getOFFactory().getVersion().compareTo(OFVersion.OF_10) > 0) {
+					req = sw.getOFFactory().buildGroupFeaturesStatsRequest()
+							.build();
+				}
+				break;
+
 			case METER_CONFIG:
+				if (sw.getOFFactory().getVersion().compareTo(OFVersion.OF_13) >= 0) {
+					req = sw.getOFFactory().buildMeterConfigStatsRequest()
+							.build();
+				}
+				break;
+
 			case METER_FEATURES:
+				if (sw.getOFFactory().getVersion().compareTo(OFVersion.OF_13) >= 0) {
+					req = sw.getOFFactory().buildMeterFeaturesStatsRequest()
+							.build();
+				}
+				break;
+
+			case TABLE:
+				if (sw.getOFFactory().getVersion().compareTo(OFVersion.OF_10) > 0) {
+					req = sw.getOFFactory().buildTableStatsRequest()
+							.build();
+				}
+				break;
+
+			case TABLE_FEATURES:	
+				if (sw.getOFFactory().getVersion().compareTo(OFVersion.OF_10) > 0) {
+					req = sw.getOFFactory().buildTableFeaturesStatsRequest()
+							.build();		
+				}
+				break;
 			case PORT_DESC:
-			case TABLE_FEATURES:
+				if (sw.getOFFactory().getVersion().compareTo(OFVersion.OF_13) >= 0) {
+					req = sw.getOFFactory().buildPortDescStatsRequest()
+							.build();
+				}
+				break;
+			case EXPERIMENTER: //TODO @Ryan support new OF1.1+ stats types			
 			default:
 				log.error("Stats Request Type {} not implemented yet", statType.name());
 				break;
@@ -172,6 +227,5 @@ public class SwitchResourceBase extends ServerResource {
 
 	protected OFFeaturesReply getSwitchFeaturesReply(String switchId) {
 		return getSwitchFeaturesReply(DatapathId.of(switchId));
-	}
-
+	}	
 }
