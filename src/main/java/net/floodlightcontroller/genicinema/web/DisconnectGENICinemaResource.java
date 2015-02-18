@@ -14,11 +14,11 @@ import org.restlet.util.Series;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class KeepAliveGENICinemaResource extends ServerResource {
-	protected static Logger log = LoggerFactory.getLogger(KeepAliveGENICinemaResource.class);
+public class DisconnectGENICinemaResource extends ServerResource {
+	protected static Logger log = LoggerFactory.getLogger(DisconnectGENICinemaResource.class);
 
 	@Post
-	public Map<String, String> keepAlive(String json) {
+	public Map<String, String> clientDisconnect(String json) {
 		Series<Header> responseHeaders = (Series<Header>) getResponse().getAttributes().get("org.restlet.http.headers"); 
 	    getResponse().getAttributes().get(HeaderConstants.ATTRIBUTE_HEADERS);
 	    if (responseHeaders == null) {
@@ -27,7 +27,7 @@ public class KeepAliveGENICinemaResource extends ServerResource {
 	    }
 	    responseHeaders.add(new Header("Access-Control-Allow-Origin", "http://myweb.clemson.edu"));
 	    
-		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class.getCanonicalName())).clientKeepAlive(json, getRequest().getClientInfo());
+		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class.getCanonicalName())).clientDisconnect(json, getRequest().getClientInfo());
 	}
 	
 	@Options

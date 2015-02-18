@@ -1,8 +1,10 @@
 package net.floodlightcontroller.genicinema;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Map.Entry;
 
 import org.projectfloodlight.openflow.protocol.OFBucket;
 import org.projectfloodlight.openflow.types.OFGroup;
@@ -36,22 +38,18 @@ public class Channel {
 	/* Are there any clients viewing the stream? */
 	private int demandCount;
 
-	/* The OVS in the path */
-	private Node sortNode;
+	/* All clients watching this Channel and their OFBuckets per sort OVS */
+	private Map<Node, Map<Integer, OFBucket>> bucketLists;
 
 	/* The OFGroup assigned to this channel */
 	private OFGroup group;
 
-	/* All clients watching this Channel and their OFBuckets */
-	private Map<Integer, OFBucket> bucketList;
-
 	private Channel(String name, String description, int id,
 			VLCStreamServer hostServer,
 			Server hostPhysServer,
-			boolean live, int demandCount,
-			Node sortNode, OFGroup group,
+			boolean live, int demandCount, OFGroup group,
 			String viewPassword, String adminPassword,
-			Map<Integer, OFBucket> bucketList) {
+			Map<Node, Map<Integer, OFBucket>> bucketLists) {
 		this.name = name;
 		this.description = description;
 		this.id = id;
@@ -59,11 +57,10 @@ public class Channel {
 		this.hostPhysServer = hostPhysServer;
 		this.live = live;
 		this.demandCount = demandCount;
-		this.sortNode = sortNode;
 		this.group = group;
 		this.viewPassword = viewPassword;
 		this.adminPassword = adminPassword;
-		this.bucketList = bucketList;
+		this.bucketLists = bucketLists;
 	}
 
 	public String getName() {
@@ -81,7 +78,7 @@ public class Channel {
 	public VLCStreamServer getHostVLCStreamServer() {
 		return this.hostServer;
 	}
-	
+
 	public Server getHostServer() {
 		return this.hostPhysServer;
 	}
@@ -102,22 +99,52 @@ public class Channel {
 		return (this.demandCount > 0);
 	}
 
+	public boolean getDemand(Node sortNode) {
+		if (this.bucketLists.get(sortNode).isEmpty()) {
+			return false;
+		} else {
+			return true;
+		}
+	}
+
 	public int getDemandCount() {
 		return this.demandCount;
 	}
 
-	public Node getSortNode() {
-		return this.sortNode;
+	public Node getSortNode(int clientId) {
+		Integer key = new Integer(clientId);
+
+		for (Entry<Node, Map<Integer, OFBucket>> entry : this.bucketLists.entrySet()) {
+			if (entry.getValue().containsKey(key)) {
+				return entry.getKey();
+			}
+		}		
+		return null;
 	}
-	
-	public void setSortNode(Node sort) {
-		this.sortNode = sort;
+
+	public boolean sortNodeExists(Node sort) {
+		if (this.bucketLists.containsKey(sort)) {
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	public void addClient(int clientId, Node sort) {
+		Integer key = new Integer(clientId);
+
+		if (this.bucketLists.containsKey(sort)) {
+			this.bucketLists.get(sort).put(key, null);
+		} else {
+			this.bucketLists.put(sort, new HashMap<Integer, OFBucket>(1));
+			this.bucketLists.get(sort).put(key, null);
+		}
 	}
 
 	public OFGroup getGroup() {
 		return this.group;
 	}
-	
+
 	public void setGroup(OFGroup group) {
 		this.group = group;
 	}
@@ -130,22 +157,55 @@ public class Channel {
 		this.live = true;
 	}
 
-	public ArrayList<OFBucket> getBucketList() {
-		return new ArrayList<OFBucket>(this.bucketList.values());
+	public ArrayList<OFBucket> getBucketList(Node sort) {
+		return (this.bucketLists.get(sort).isEmpty() ? new ArrayList<OFBucket>() : new ArrayList<OFBucket>(this.bucketLists.get(sort).values()));
+	}
+
+	public void addBucket(int clientId, Node sort, OFBucket bucketToAdd) {
+		Integer key = new Integer(clientId);
+
+		if (this.bucketLists.containsKey(sort)) {
+			this.bucketLists.get(sort).put(key, bucketToAdd);
+		} else {
+			this.bucketLists.put(sort, new HashMap<Integer, OFBucket>(1));
+			this.bucketLists.get(sort).put(key, bucketToAdd); // add/replace
+		}
+
+		incrementDemand();
 	}
 
 	public void addBucket(int clientId, OFBucket bucketToAdd) {
 		Integer key = new Integer(clientId);
-		bucketList.put(key, bucketToAdd); // add/replace
-		
+
+		for (Entry<Node, Map<Integer, OFBucket>> entry : this.bucketLists.entrySet()) {
+			if (entry.getValue().containsKey(key)) {
+				this.bucketLists.get(entry.getKey()).put(key, bucketToAdd);
+				break;
+			}
+		}		
+
 		incrementDemand();
 	}
 
-	public void removeBucket(int clientId) {
+
+	public void removeClient(int clientId) {
 		Integer key = new Integer(clientId);
-		bucketList.remove(key); // if exists
-		
+		for (Entry<Node, Map<Integer, OFBucket>> entry: this.bucketLists.entrySet()) {
+			if (entry.getValue().containsKey(key)) {
+				entry.getValue().remove(key);
+				break; // only one client ID possible, so break when we find it
+			}
+		}
+
 		decrementDemand();
+	}
+
+	public void removeSortNodeIfHasNoClients(Node node) {
+		if (this.bucketLists.containsKey(node)) {
+			if (this.bucketLists.get(node).isEmpty()) {
+				this.bucketLists.remove(node);
+			}
+		}
 	}
 
 	private void decrementDemand() {
@@ -185,12 +245,10 @@ public class Channel {
 				.append(this.live)
 				.append(", demand=")
 				.append(this.demandCount)
-				.append(", sort-node=")
-				.append(this.sortNode.toString())
 				.append(", group=")
 				.append(this.group.toString())
 				.append(", bucket-list=")
-				.append(this.bucketList.toString())
+				.append(this.bucketLists.toString())
 				.toString();
 	}
 
@@ -201,7 +259,7 @@ public class Channel {
 		result = prime * result
 				+ ((adminPassword == null) ? 0 : adminPassword.hashCode());
 		result = prime * result
-				+ ((bucketList == null) ? 0 : bucketList.hashCode());
+				+ ((bucketLists == null) ? 0 : bucketLists.hashCode());
 		result = prime * result + demandCount;
 		result = prime * result
 				+ ((description == null) ? 0 : description.hashCode());
@@ -213,8 +271,6 @@ public class Channel {
 		result = prime * result + id;
 		result = prime * result + (live ? 1231 : 1237);
 		result = prime * result + ((name == null) ? 0 : name.hashCode());
-		result = prime * result
-				+ ((sortNode == null) ? 0 : sortNode.hashCode());
 		result = prime * result
 				+ ((viewPassword == null) ? 0 : viewPassword.hashCode());
 		return result;
@@ -234,10 +290,10 @@ public class Channel {
 				return false;
 		} else if (!adminPassword.equals(other.adminPassword))
 			return false;
-		if (bucketList == null) {
-			if (other.bucketList != null)
+		if (bucketLists == null) {
+			if (other.bucketLists != null)
 				return false;
-		} else if (!bucketList.equals(other.bucketList))
+		} else if (!bucketLists.equals(other.bucketLists))
 			return false;
 		if (demandCount != other.demandCount)
 			return false;
@@ -270,11 +326,6 @@ public class Channel {
 				return false;
 		} else if (!name.equals(other.name))
 			return false;
-		if (sortNode == null) {
-			if (other.sortNode != null)
-				return false;
-		} else if (!sortNode.equals(other.sortNode))
-			return false;
 		if (viewPassword == null) {
 			if (other.viewPassword != null)
 				return false;
@@ -293,9 +344,8 @@ public class Channel {
 		private Server b_hostPhysServer;
 		private boolean b_live;
 		private int b_demandCount;
-		private Node b_sortNode;
 		private OFGroup b_group;
-		private Map<Integer, OFBucket> b_bucketList;
+		private Map<Node, Map<Integer, OFBucket>> b_bucketLists;
 
 		public ChannelBuilder() {
 			b_name = null;
@@ -307,9 +357,8 @@ public class Channel {
 			b_hostPhysServer = null;
 			b_live = false;
 			b_demandCount = 0;
-			b_sortNode = null;
 			b_group = null;
-			b_bucketList = new HashMap<Integer, OFBucket>();
+			b_bucketLists = new HashMap<Node, Map<Integer, OFBucket>>();
 		}
 
 		private ChannelBuilder(Channel channel) {
@@ -322,9 +371,8 @@ public class Channel {
 			b_hostPhysServer = channel.hostPhysServer;
 			b_live = channel.live;
 			b_demandCount = channel.demandCount;
-			b_sortNode = channel.sortNode;
 			b_group = OFGroup.of(channel.group.getGroupNumber());
-			b_bucketList = new HashMap<Integer, OFBucket>(channel.bucketList);
+			b_bucketLists = new HashMap<Node, Map<Integer, OFBucket>>(channel.bucketLists);
 		}
 
 		public ChannelBuilder setName(String name) {
@@ -356,7 +404,7 @@ public class Channel {
 			this.b_hostServer = hostServer;
 			return this;
 		}
-		
+
 		public ChannelBuilder setHostServer(Server hostPhysServer) {
 			this.b_hostPhysServer = hostPhysServer;
 			return this;
@@ -367,23 +415,8 @@ public class Channel {
 			return this;
 		}
 
-		public ChannelBuilder setSortNode(Node sort) {
-			if (sort != null) {
-				this.b_sortNode = sort;
-			} else {
-				this.b_sortNode = null;
-			}
-			return this;
-		}
-		
 		public ChannelBuilder setGroup(OFGroup group) {
 			this.b_group = OFGroup.of(group.getGroupNumber());
-			return this;
-		}
-		
-		public ChannelBuilder addBucket(int clientId, OFBucket bucket) {
-			Integer key = new Integer(clientId);
-			this.b_bucketList.put(key, bucket); // add/replace
 			return this;
 		}
 
@@ -393,7 +426,7 @@ public class Channel {
 					|| this.b_id == -1 || this.b_hostServer == null
 					|| this.b_hostPhysServer == null
 					/*|| this.b_sortNode == null || this.b_group == null  When Channel is created, a sort Node and OFGroup will not be assigned yet; only when a viewer connects */
-					|| this.b_bucketList == null) {
+					|| this.b_bucketLists == null) {
 				throw new BuilderException("All components of " + this.getClass().getSimpleName() + " must be non-null: " + this.toString());
 			}
 		}
@@ -402,9 +435,9 @@ public class Channel {
 			checkAllSet(); // throw execption if Channel isn't complete
 			return new Channel(this.b_name, this.b_description, this.b_id, this.b_hostServer, 
 					this.b_hostPhysServer, this.b_live, this.b_demandCount, 
-					this.b_sortNode, this.b_group,
+					this.b_group,
 					this.b_viewPassword, this.b_adminPassword,
-					this.b_bucketList);
+					this.b_bucketLists);
 		}
 
 		@Override
@@ -428,12 +461,10 @@ public class Channel {
 					.append(this.b_live)
 					.append(", demand=")
 					.append(this.b_demandCount)
-					.append(", sort-node=")
-					.append(this.b_sortNode.toString())
 					.append(", group=")
 					.append(this.b_group.toString())
 					.append(", bucket-list=")
-					.append(this.b_bucketList.toString())
+					.append(this.b_bucketLists.toString())
 					.toString();
 		}
 	} // END CHANNEL BUILDER CLASS

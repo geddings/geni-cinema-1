@@ -1,5 +1,7 @@
 package net.floodlightcontroller.genicinema.web;
 
+import java.util.Map;
+
 import net.floodlightcontroller.core.annotations.LogMessageDoc;
 import net.floodlightcontroller.genicinema.IGENICinemaService;
 
@@ -21,7 +23,7 @@ public class RemoveGENICinemaResource extends ServerResource {
 	message="Error deleting flow mod request: {request}",
 	explanation="An invalid delete request was sent to static flow pusher",
 	recommendation="Fix the format of the static flow mod request")
-	public String parseRemoveRequest(String json) {
+	public Map<String, String> parseRemoveRequest(String json) {
 		Series<Header> responseHeaders = (Series<Header>) getResponse().getAttributes().get("org.restlet.http.headers"); 
 	    getResponse().getAttributes().get(HeaderConstants.ATTRIBUTE_HEADERS);
 	    if (responseHeaders == null) {

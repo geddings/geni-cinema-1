@@ -15,6 +15,7 @@ public class Aggregate {
 	private ArrayList<Gateway> ingressGateways;
 	private ArrayList<Gateway> egressGateways;
 
+	private ArrayList<Node> ovsRoots;
 	private ArrayList<Node> ovsVMs;
 	private ArrayList<Server> vlcsVMs;
 
@@ -25,13 +26,14 @@ public class Aggregate {
 	private static final int MAX_GROUPS = 10;
 
 	private Aggregate(String name, String description, ArrayList<Gateway> ingressGateways, ArrayList<Gateway> egressGateways, 
-			ArrayList<Node> ovsVMs, ArrayList<Server> vlcsVMs,
+			ArrayList<Node> ovsRoots, ArrayList<Node> ovsVMs, ArrayList<Server> vlcsVMs,
 			Map<Node, ArrayDeque<OFGroup>> groupsPerSortNode,
 			Map<Node, Boolean> isNodeConnected) {
 		this.name = name;
 		this.description = description;
 		this.ingressGateways = ingressGateways;
 		this.egressGateways = egressGateways;
+		this.ovsRoots = ovsRoots;
 		this.ovsVMs = ovsVMs;
 		this.vlcsVMs = vlcsVMs;
 		this.availableOFGroupsPerSortNode = groupsPerSortNode;
@@ -56,6 +58,10 @@ public class Aggregate {
 
 	public ArrayList<Node> getSwitches() {
 		return new ArrayList<Node>(this.ovsVMs);
+	}
+	
+	public ArrayList<Node> getRootSwitches() {
+		return new ArrayList<Node>(this.ovsRoots);
 	}
 
 	public ArrayList<Server> getServers() {
@@ -178,6 +184,8 @@ public class Aggregate {
 				.append(this.ingressGateways.toString())
 				.append(", egress-gw=")
 				.append(this.egressGateways.toString())
+				.append(", roots=")
+				.append(this.ovsRoots.toString())
 				.append(", switches=")
 				.append(this.ovsVMs.toString())
 				.append(", servers=")
@@ -202,6 +210,8 @@ public class Aggregate {
 		result = prime * result
 				+ ((isNodeConnected == null) ? 0 : isNodeConnected.hashCode());
 		result = prime * result + ((name == null) ? 0 : name.hashCode());
+		result = prime * result
+				+ ((ovsRoots == null) ? 0 : ovsRoots.hashCode());
 		result = prime * result + ((ovsVMs == null) ? 0 : ovsVMs.hashCode());
 		result = prime * result + ((vlcsVMs == null) ? 0 : vlcsVMs.hashCode());
 		return result;
@@ -247,6 +257,11 @@ public class Aggregate {
 				return false;
 		} else if (!name.equals(other.name))
 			return false;
+		if (ovsRoots == null) {
+			if (other.ovsRoots != null)
+				return false;
+		} else if (!ovsRoots.equals(other.ovsRoots))
+			return false;
 		if (ovsVMs == null) {
 			if (other.ovsVMs != null)
 				return false;
@@ -267,6 +282,7 @@ public class Aggregate {
 		private ArrayList<Gateway> b_ingressGateways;
 		private ArrayList<Gateway> b_egressGateways;
 
+		private ArrayList<Node> b_ovsRoots;
 		private ArrayList<Node> b_ovsVMs;
 		private ArrayList<Server> b_vlcsVMs;
 
@@ -279,6 +295,7 @@ public class Aggregate {
 			this.b_description = null;
 			this.b_ingressGateways = new ArrayList<Gateway>();
 			this.b_egressGateways = new ArrayList<Gateway>();
+			this.b_ovsRoots = new ArrayList<Node>();
 			this.b_ovsVMs = new ArrayList<Node>();
 			this.b_vlcsVMs = new ArrayList<Server>();
 			this.b_availableOFGroupsPerSortNode = new HashMap<Node, ArrayDeque<OFGroup>>();
@@ -290,6 +307,7 @@ public class Aggregate {
 			this.b_description = new String(aggregate.description);
 			this.b_ingressGateways = new ArrayList<Gateway>(aggregate.ingressGateways);
 			this.b_egressGateways = new ArrayList<Gateway>(aggregate.egressGateways);
+			this.b_ovsRoots = new ArrayList<Node>(aggregate.ovsRoots);
 			this.b_ovsVMs = new ArrayList<Node>(aggregate.ovsVMs);
 			this.b_vlcsVMs = new ArrayList<Server>(aggregate.vlcsVMs);
 			this.b_availableOFGroupsPerSortNode = new HashMap<Node, ArrayDeque<OFGroup>>(aggregate.availableOFGroupsPerSortNode);
@@ -351,6 +369,18 @@ public class Aggregate {
 
 			return this;
 		}
+		
+		public AggregateBuilder addRootSwitch(Node node) {
+			if (!this.b_ovsRoots.contains(node)) {
+				this.b_ovsRoots.add(node);
+			}
+
+			if (!this.b_isNodeConnected.containsKey(node)) {
+				this.b_isNodeConnected.put(node, false);
+			}
+
+			return this;
+		}
 
 		public AggregateBuilder setIngressGateways(ArrayList<Gateway> ingress) {
 			this.b_ingressGateways = ingress;
@@ -365,6 +395,13 @@ public class Aggregate {
 		public AggregateBuilder setSwitches(ArrayList<Node> nodes) {
 			for (Node node : nodes) {
 				this.addSwitch(node);
+			}
+			return this;
+		}
+		
+		public AggregateBuilder setRootSwitches(ArrayList<Node> nodes) {
+			for (Node node : nodes) {
+				this.addRootSwitch(node);
 			}
 			return this;
 		}
@@ -388,7 +425,7 @@ public class Aggregate {
 		public Aggregate build() {
 			checkAllSet();
 			return new Aggregate(this.b_name, this.b_description, this.b_ingressGateways, this.b_egressGateways, 
-					this.b_ovsVMs, this.b_vlcsVMs, this.b_availableOFGroupsPerSortNode, this.b_isNodeConnected);
+					this.b_ovsRoots, this.b_ovsVMs, this.b_vlcsVMs, this.b_availableOFGroupsPerSortNode, this.b_isNodeConnected);
 		}
 
 		@Override
@@ -402,6 +439,8 @@ public class Aggregate {
 					.append(this.b_ingressGateways.toString())
 					.append(", egress-gw=")
 					.append(this.b_egressGateways.toString())
+					.append(", roots=")
+					.append(this.b_ovsRoots.toString())
 					.append(", switches=")
 					.append(this.b_ovsVMs.toString())
 					.append(", servers=")

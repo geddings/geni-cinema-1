@@ -44,7 +44,7 @@ public interface IGENICinemaService extends IFloodlightService {
 	 * @param clientInfo, info on the client from restlet
 	 * @return The message to be sent back to the client
 	 */
-	public String removeChannel(String json, ClientInfo clientInfo);
+	public Map<String, String> removeChannel(String json, ClientInfo clientInfo);
 	
 	/**
 	 * Request to watch a channel defined by
@@ -54,6 +54,14 @@ public interface IGENICinemaService extends IFloodlightService {
 	 * @return The message to be sent back to the client
 	 */
 	public Map<String, String> watchChannel(String json, ClientInfo clientInfo);
+	
+	/**
+	 * Client gracefully disconnects.
+	 * @param json, the string from the client
+	 * @param clientInfo, info on the client from restlet
+	 * @return The message to be sent back to the client
+	 */
+	public Map<String, String> clientDisconnect(String json, ClientInfo clientInfo);
 	
 	/**
 	 * Request to edit a channel defined by

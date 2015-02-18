@@ -18,6 +18,7 @@ public class GENICinemaWebRoutable implements RestletRoutable {
         router.attach("/add/json", AddGENICinemaResource.class);
         router.attach("/view/json", ViewGENICinemaResource.class);
         router.attach("/remove/json", RemoveGENICinemaResource.class);
+        router.attach("/disconnect/json", DisconnectGENICinemaResource.class);
         router.attach("/modify/json", ModifyGENICinemaResource.class);
         router.attach("/keep-alive/json", KeepAliveGENICinemaResource.class);
         return router;

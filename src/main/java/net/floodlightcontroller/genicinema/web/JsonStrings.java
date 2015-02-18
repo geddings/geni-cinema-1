@@ -67,6 +67,20 @@ public class JsonStrings {
 			public static final String result_message = RESULT_MESSAGE;
 		}	
 	}
+	
+	public static class Disconnect {
+		private Disconnect() {};
+		public static class Request {
+			private Request() {};
+			public static final String client_id = CLIENT_ID;
+		}
+
+		public static class Response {
+			private Response() {};
+			public static final String result = RESULT; // success or failure
+			public static final String result_message = RESULT_MESSAGE;
+		}	
+	}
 
 	public static class Remove {
 		private Remove() {};

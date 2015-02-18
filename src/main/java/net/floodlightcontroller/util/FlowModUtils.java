@@ -21,7 +21,7 @@ import org.projectfloodlight.openflow.protocol.OFVersion;
 public class FlowModUtils {
 	public static final int INFINITE_TIMEOUT = 0;
 
-	public static final int PRIORITY_MAX = 32768;
+	public static final int PRIORITY_MAX = 32767; // highest signed short is 32767
 	public static final int PRIORITY_VERY_HIGH = 28672;
 	public static final int PRIORITY_HIGH = 24576;
 	public static final int PRIORITY_MED_HIGH = 20480;
