@@ -8,8 +8,8 @@ import net.floodlightcontroller.genicinema.IGENICinemaService;
 import org.restlet.engine.header.Header;
 import org.restlet.engine.header.HeaderConstants;
 import org.restlet.representation.Representation;
-import org.restlet.resource.Delete;
 import org.restlet.resource.Options;
+import org.restlet.resource.Post;
 import org.restlet.resource.ServerResource;
 import org.restlet.util.Series;
 import org.slf4j.Logger;
@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
 public class RemoveGENICinemaResource extends ServerResource {
 	protected static Logger log = LoggerFactory.getLogger(RemoveGENICinemaResource.class);
 	
-	@Delete
+	@Post
 	@LogMessageDoc(level="ERROR",
 	message="Error deleting flow mod request: {request}",
 	explanation="An invalid delete request was sent to static flow pusher",

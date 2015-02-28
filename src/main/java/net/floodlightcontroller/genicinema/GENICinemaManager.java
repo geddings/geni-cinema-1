@@ -108,6 +108,9 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	private volatile static int clientIdGenerator = 0;
 	private volatile static int channelIdGenerator = -1; /* Start at -1 so that the first "default" Channel is 0 */
 	private volatile static int groupIDGenerator = 0;
+	
+	/* Only add the default channel once, even if something strange happens and a switch disconnects and reconnects. */
+	private volatile static boolean defaultChannelAdded = false;
 
 	/*
 	 * IFloodlightModule implementation
@@ -492,16 +495,17 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			}
 		}
 
-		if (readyToRock) {
+		if (readyToRock && !defaultChannelAdded) {
 			log.info("All switches connected. Ready to rock!");
 			/*
 			 * Lastly, setup the default splash screen Channel.
 			 * A null ClientInfo implies it's the default Channel.
 			 */
+			defaultChannelAdded = true;
 			addChannel("{\"" + JsonStrings.Add.Request.name + "\":\"Default\"," +
 					"\"" + JsonStrings.Add.Request.description + "\":\"The GENI Cinema Splash Screen.\"," +
-					"\"" + JsonStrings.Add.Request.view_password + "\":\"\"," +
-					"\"" + JsonStrings.Add.Request.admin_password + "\":\"\"}", null);
+					"\"" + JsonStrings.Add.Request.view_password + "\":\"\"," + /* set a password so that people can't mess with it */
+					"\"" + JsonStrings.Add.Request.admin_password + "\":\"g3n1-r0ck5!!\"}", null);
 		}	
 	}
 
@@ -540,8 +544,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		for (Aggregate aggregate : aggregates) {
 			if (!aggregate.allSwitchesConnected()) {
 				Map<String, String> keyValue = new HashMap<String, String>(2);
-				keyValue.put(JsonStrings.Query.Response.result, JsonStrings.Result.SwitchesNotReady.code);
-				keyValue.put(JsonStrings.Query.Response.result_message, JsonStrings.Result.SwitchesNotReady.message);
+				keyValue.put(JsonStrings.Result.result_code, JsonStrings.Result.SwitchesNotReady.code);
+				keyValue.put(JsonStrings.Result.result_message, JsonStrings.Result.SwitchesNotReady.message);
 				response.add(keyValue);
 				return response;
 			}
@@ -556,7 +560,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 						channelInfo.put(JsonStrings.Query.Response.channel_id, String.valueOf(channel.getId()));
 						channelInfo.put(JsonStrings.Query.Response.description, channel.getDescription());
 						channelInfo.put(JsonStrings.Query.Response.name, channel.getName());
-						channelInfo.put(JsonStrings.Query.Response.aggregate_name, aggregate.getName());
+						channelInfo.put(JsonStrings.Query.Response.demand, String.valueOf(channel.getDemandCount()));
 						response.add(channelInfo);
 					}
 				}
@@ -565,12 +569,12 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 
 		Map<String, String> result = new HashMap<String, String>();
 		if (response.isEmpty()) {
-			result.put(JsonStrings.Query.Response.result, "1");
-			result.put(JsonStrings.Query.Response.result_message, "There are no Channels available at this time. Please check back later.");
+			result.put(JsonStrings.Result.result_code, JsonStrings.Result.NoChannelsAvailable.code);
+			result.put(JsonStrings.Result.result_message, JsonStrings.Result.NoChannelsAvailable.message);
 			response.add(result);
 		} else {
-			result.put(JsonStrings.Query.Response.result, "0");
-			result.put(JsonStrings.Query.Response.result_message, "There are Channels available for viewing. See the returned Channel information to make your selection.");
+			result.put(JsonStrings.Result.result_code, JsonStrings.Result.Complete.code);
+			result.put(JsonStrings.Result.result_message, JsonStrings.Result.Complete.message);
 			response.add(result);
 		}
 
@@ -652,8 +656,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		if (reqFields < 1) {
 			log.error("Did not receive all expected JSON fields in Disconnect request! Only got {} matches. CLIENT STILL CONNECTED.", reqFields);
-			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.IncorrectJsonFields.code);
-			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.IncorrectJsonFields.message);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.IncorrectJsonFields.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.IncorrectJsonFields.message);
 			return response;
 		}
 
@@ -665,16 +669,16 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			requestedClientAsInt = Integer.parseInt(json_clientId);
 		} catch (NumberFormatException e) {
 			log.error("Could not parse specified Client ID '{}'.", json_clientId);
-			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ClientIdParseError.code);
-			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ClientIdParseError.message);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.ClientIdParseError.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.ClientIdParseError.message);
 			return response;
 		}
 
 		EgressStream existingStream = lookupClient(requestedClientAsInt);
 		if (existingStream == null) {
 			log.error("Could not locate client information for specified client ID {}.", json_clientId);
-			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ClientIdNotFound.code);
-			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ClientIdNotFound.message);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.ClientIdNotFound.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.ClientIdNotFound.message);
 			return response;
 		} else {
 			/*
@@ -695,8 +699,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			}
 			if (egressGateway == null) {
 				log.error("Could not lookup egress Gateway from VLCStreamServer. Is GC in an inconsistent state?");
-				response.put(JsonStrings.Disconnect.Response.result, JsonStrings.Result.EgressGatewayNotFound.code);
-				response.put(JsonStrings.Disconnect.Response.result_message, JsonStrings.Result.EgressGatewayNotFound.message);
+				response.put(JsonStrings.Result.result_code, JsonStrings.Result.EgressGatewayNotFound.code);
+				response.put(JsonStrings.Result.result_message, JsonStrings.Result.EgressGatewayNotFound.message);
 				return response;
 			} else {
 				/*
@@ -704,8 +708,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				 */
 				removeEgressStream(existingStream, egressGateway);
 
-				response.put(JsonStrings.Disconnect.Response.result, JsonStrings.Result.Complete.code);
-				response.put(JsonStrings.Disconnect.Response.result_message, JsonStrings.Result.Complete.message);
+				response.put(JsonStrings.Result.result_code, JsonStrings.Result.Complete.code);
+				response.put(JsonStrings.Result.result_message, JsonStrings.Result.Complete.message);
 				return response;
 			}			
 		}
@@ -734,8 +738,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			clientIP = clientInfo.getAddress(); 
 			if (clientIP.equals("0.0.0.0")) {
 				log.error("RECEIVED A CLIENT_INFO IP OF 0.0.0.0. This should NEVER happen and might mess up the default Channel! Aborting Channel ADD.");
-				response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ClientIpAllZeros.code);
-				response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ClientIpAllZeros.message);
+				response.put(JsonStrings.Result.result_code, JsonStrings.Result.ClientIpAllZeros.code);
+				response.put(JsonStrings.Result.result_message, JsonStrings.Result.ClientIpAllZeros.message);
 				return response;
 			}
 		}
@@ -790,8 +794,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		if (reqFields < 4) {
 			log.error("Did not receive all expected JSON fields in Add request! Only got {} matches. CHANNEL NOT ADDED.", reqFields);
-			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.IncorrectJsonFields.code);
-			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.IncorrectJsonFields.message);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.IncorrectJsonFields.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.IncorrectJsonFields.message);
 			return response;
 		}
 
@@ -804,16 +808,16 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			clientIPconverted = IPv4Address.of(clientIP);
 		} catch (Exception e) {
 			log.error("Could not parse client IP {} in JSON request to ADD a Channel.", clientIP);
-			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ClientIpParseError.code);
-			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ClientIpParseError.message);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.ClientIpParseError.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.ClientIpParseError.message);
 			return response;
 		}
 
 		Gateway ingressGW = findBestIngressGateway(clientIPconverted);		
 		if (ingressGW == null) {
 			log.error("Could not find an available GENI Cinema Ingress Gateway for the client with IP {}", clientIP);
-			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.IngressGatewayUnavailable.code);
-			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.IngressGatewayUnavailable.message);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.IngressGatewayUnavailable.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.IngressGatewayUnavailable.message);
 			return response;
 		}
 
@@ -826,8 +830,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		VLCStreamServer hostServerVLCSS = getVLCSSOnHostServer(hostServer);		
 		if (hostServerVLCSS ==  null) {
 			log.error("Could not find an available VLCStreamServer (i.e. an available VLC listen socket) for the client to stream to.");
-			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.IngressVLCStreamServerUnavailable.code);
-			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.IngressVLCStreamServerUnavailable.message);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.IngressVLCStreamServerUnavailable.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.IngressVLCStreamServerUnavailable.message);
 			return response;
 		}
 
@@ -859,15 +863,15 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		if (!addChannel(theChannel, theStream)) {
 			log.error("Could not add new Channel to the Manager!");
-			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ChannelAddError.code);
-			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ChannelAddError.message);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.ChannelAddError.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.ChannelAddError.message);
 			return response;
 		}
 
 		insertNewChannelDropFlows(theChannel);
 
-		response.put(JsonStrings.Add.Response.result, "0");
-		response.put(JsonStrings.Add.Response.result_message, 
+		response.put(JsonStrings.Result.result_code, JsonStrings.Result.Complete.code);
+		response.put(JsonStrings.Result.result_message, 
 				"Channel has been successfully added to the GENI Cinema Service. Initiate your stream to make the channel available to viewers.");
 		response.put(JsonStrings.Add.Response.admin_password, theChannel.getAdminPassword());
 		response.put(JsonStrings.Add.Response.channel_id, Integer.toString(theChannel.getId()));
@@ -932,8 +936,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		if (reqFields < 2) {
 			log.error("Did not receive all expected JSON fields in Remove request! Only got {} matches. CHANNEL NOT REMOVED.", reqFields);
-			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.IncorrectJsonFields.code);
-			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.IncorrectJsonFields.message);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.IncorrectJsonFields.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.IncorrectJsonFields.message);
 			return response;
 		}
 
@@ -946,16 +950,16 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			requestedChannelAsInt = Integer.parseInt(json_channelId);
 		} catch (NumberFormatException e) {
 			log.error("Could not parse specified Channel ID '{}'.", json_channelId);
-			response.put(JsonStrings.Remove.Response.result, JsonStrings.Result.ChannelIdParseError.code);
-			response.put(JsonStrings.Remove.Response.result_message, JsonStrings.Result.ChannelIdParseError.message);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.ChannelIdParseError.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.ChannelIdParseError.message);
 			return response;
 		}
 
 		Channel channel = lookupChannel(requestedChannelAsInt);
 		if (channel == null) {
 			log.error("Could not locate specified Channel ID '{}'.", requestedChannelAsInt);
-			response.put(JsonStrings.Remove.Response.result, JsonStrings.Result.ChannelIdUnavailable.code);
-			response.put(JsonStrings.Remove.Response.result_message, JsonStrings.Result.ChannelIdUnavailable.message);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.ChannelIdUnavailable.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.ChannelIdUnavailable.message);
 			return response;
 		}
 
@@ -965,8 +969,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		if (!json_adminPass.equals(channel.getAdminPassword())) {
 			log.error("Admin password '{}' is incorrect for Channel ID '{}' with AP of '" + channel.getAdminPassword() + "'.", 
 					json_adminPass, requestedChannelAsInt);
-			response.put(JsonStrings.Remove.Response.result, JsonStrings.Result.AdminPasswordIncorrect.code);
-			response.put(JsonStrings.Remove.Response.result_message, JsonStrings.Result.AdminPasswordIncorrect.message);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.AdminPasswordIncorrect.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.AdminPasswordIncorrect.message);
 			return response;
 		}
 
@@ -978,14 +982,15 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * TODO this will modify the list of buckets for that Channel many times...can we do all at once maybe?
 		 */
 		Aggregate aggregate = lookupAggregate(channel);
+		Channel defaultChannel = lookupChannel(0);
 		for (EgressStream es : egressStreamsPerAggregate.get(aggregate.getName())) {
 			if (es.getChannel().equals(channel)) {
 				/*
-				 * Found a Channel we need to remove.
+				 * Found a Client we need to move to the default Channel.
 				 */
-				watchChannel("\"{\"" + JsonStrings.Watch.Request.client_id + "\":\"" + es.getId() + "\"" +
-						",\"" + JsonStrings.Watch.Request.view_password + "\":\"\"" +
-						",\"" + JsonStrings.Watch.Request.channel_id + "\":\"0\"}\"", null);
+				watchChannel("{\"" + JsonStrings.Watch.Request.client_id + "\":\"" + es.getId() + "\"" +
+						",\"" + JsonStrings.Watch.Request.view_password + "\":\"" + defaultChannel.getViewPassword() + "\"" +
+						",\"" + JsonStrings.Watch.Request.channel_id + "\":\"" + defaultChannel.getId() + "\"}", null);
 			}
 		}
 
@@ -995,8 +1000,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		removeChannel(channel);
 
-		response.put(JsonStrings.Remove.Response.result, JsonStrings.Result.Complete.code);
-		response.put(JsonStrings.Remove.Response.result_message, JsonStrings.Result.Complete.message);
+		response.put(JsonStrings.Result.result_code, JsonStrings.Result.Complete.code);
+		response.put(JsonStrings.Result.result_message, JsonStrings.Result.Complete.message);
 		return response;
 	}
 
@@ -1020,8 +1025,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			clientIP = clientInfo.getAddress(); 
 			if (clientIP.equals("0.0.0.0")) {
 				log.error("RECEIVED A CLIENT_INFO IP OF 0.0.0.0. This should NEVER happen and might mess up the default Channel! Aborting Channel WATCH.");
-				response.put(JsonStrings.Watch.Response.result, JsonStrings.Result.ClientIpAllZeros.code);
-				response.put(JsonStrings.Watch.Response.result_message, JsonStrings.Result.ClientIpAllZeros.message);
+				response.put(JsonStrings.Result.result_code, JsonStrings.Result.ClientIpAllZeros.code);
+				response.put(JsonStrings.Result.result_message, JsonStrings.Result.ClientIpAllZeros.message);
 				return response;
 			}
 		}
@@ -1070,9 +1075,9 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * were received in the Add request. If not, bail out.
 		 */
 		if (reqFields < 3) {
-			log.error("Did not receive all expected JSON fields in Add request! Only got {} matches. CHANNEL NOT ADDED.", reqFields);
-			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.IncorrectJsonFields.code);
-			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.IncorrectJsonFields.message);
+			log.error("Did not receive all expected JSON fields in Watch request! Only got {} matches. CHANNEL NOT CHANGED.", reqFields);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.IncorrectJsonFields.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.IncorrectJsonFields.message);
 			return response;
 		}
 
@@ -1085,16 +1090,16 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			requestedChannelAsInt = Integer.parseInt(json_channelId);
 		} catch (NumberFormatException e) {
 			log.error("Could not parse specified Channel ID '{}'.", json_channelId);
-			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ChannelIdParseError.code);
-			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ChannelIdParseError.message);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.ChannelIdParseError.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.ChannelIdParseError.message);
 			return response;
 		}
 
 		Channel channel = lookupChannel(requestedChannelAsInt);
 		if (channel == null) {
 			log.error("Could not locate specified Channel ID '{}'.", requestedChannelAsInt);
-			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ChannelIdUnavailable.code);
-			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ChannelIdUnavailable.message);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.ChannelIdUnavailable.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.ChannelIdUnavailable.message);
 			return response;
 		}
 
@@ -1104,8 +1109,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		if (!json_viewPass.equals(channel.getViewPassword())) {
 			log.error("View password '{}' is incorrect for Channel ID '{}' with VP of '" + channel.getViewPassword() + "'.", 
 					json_viewPass, requestedChannelAsInt);
-			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ViewPasswordIncorrect.code);
-			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ViewPasswordIncorrect.message);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.ViewPasswordIncorrect.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.ViewPasswordIncorrect.message);
 			return response;
 		}
 
@@ -1121,8 +1126,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				log.debug("Client ID was empty string. Assuming new client connection.");
 			} else {
 				log.error("Could not parse specified Client ID '{}'.", json_clientId);
-				response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ClientIdParseError.code);
-				response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ClientIdParseError.message);
+				response.put(JsonStrings.Result.result_code, JsonStrings.Result.ClientIdParseError.code);
+				response.put(JsonStrings.Result.result_message, JsonStrings.Result.ClientIdParseError.message);
 				return response;
 			}
 		}
@@ -1132,6 +1137,18 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			existingStream = lookupClient(requestedClientAsInt);
 		} else {
 			existingStream = null;
+		}
+		
+		/*
+		 * If client ID was provided but the client was not found,
+		 * report an error, since the web server is in an inconsistent
+		 * state.
+		 */
+		if (requestedClientAsInt != -1 && existingStream == null) {
+			log.error("Cannot select new Channel because Client ID '{}' does not exist.", json_clientId);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.ClientIdNotFound.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.ClientIdNotFound.message);
+			return response;
 		}
 
 		/*
@@ -1161,8 +1178,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			Gateway egressGW = findBestEgressGateway(IPv4Address.of(clientIP));
 			if (egressGW == null) {
 				log.error("Could not locate a suitable egress Gateway for client IP {}", clientIP);
-				response.put(JsonStrings.Add.Response.result, JsonStrings.Result.EgressGatewayUnavailable.code);
-				response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.EgressGatewayUnavailable.message);
+				response.put(JsonStrings.Result.result_code, JsonStrings.Result.EgressGatewayUnavailable.code);
+				response.put(JsonStrings.Result.result_message, JsonStrings.Result.EgressGatewayUnavailable.message);
 				return response;
 			}
 			log.debug("Found a suitable egress Gateway: {}", egressGW);
@@ -1173,8 +1190,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			VLCStreamServer vlcss = getVLCSSOnGateway(egressGW);
 			if (vlcss == null) {
 				log.error("Could not allocate a VLCStreamServer on Gateway {}", egressGW.toString());
-				response.put(JsonStrings.Add.Response.result, JsonStrings.Result.EgressVLCStreamServerUnavailable.code);
-				response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.EgressVLCStreamServerUnavailable.message);
+				response.put(JsonStrings.Result.result_code, JsonStrings.Result.EgressVLCStreamServerUnavailable.code);
+				response.put(JsonStrings.Result.result_message, JsonStrings.Result.EgressVLCStreamServerUnavailable.message);
 				return response;
 			}
 			log.debug("On egress Gateway {}, found an available VLCSS: {}", egressGW, vlcss);
@@ -1219,9 +1236,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			addEgressStream(es, egressGW);
 			log.debug("All resources allocated for NEW EgressStream. EgressStream set:", es);
 
-			response.put(JsonStrings.Add.Response.result, "0"); // success, but not really
-			response.put(JsonStrings.Add.Response.result_message, 
-					"Thanks for tuning in! Your initial Channel selection is " + es.getChannel().getId());
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.Complete.code);
+			response.put(JsonStrings.Result.result_message, "Thanks for tuning in! Your initial Channel selection is " + es.getChannel().getId());
 			response.put(JsonStrings.Watch.Response.channel_id, String.valueOf(es.getChannel().getId()));
 			response.put(JsonStrings.Watch.Response.client_id, String.valueOf(es.getId()));
 			response.put(JsonStrings.Watch.Response.description, es.getChannel().getDescription());
@@ -1237,9 +1253,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			 */
 		} else if (existingStream.getChannel().getId() == requestedChannelAsInt) {
 			log.debug("Client {} tried to change Channels to same Channel {}. Leaving same configuration.", existingStream.getId(), existingStream.getChannel().getId());
-			response.put(JsonStrings.Add.Response.result, "0"); // success, but not really
-			response.put(JsonStrings.Add.Response.result_message, 
-					"The Channel specified is the Channel you are currently watching.");
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.Complete.code);
+			response.put(JsonStrings.Result.result_message, "The Channel specified is the Channel you are currently watching.");
 			response.put(JsonStrings.Watch.Response.channel_id, String.valueOf(existingStream.getChannel().getId()));
 			response.put(JsonStrings.Watch.Response.client_id, String.valueOf(existingStream.getId()));
 			response.put(JsonStrings.Watch.Response.description, existingStream.getChannel().getDescription());
@@ -1288,8 +1303,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			 */
 			existingStream.changeChannel(channel);
 
-			response.put(JsonStrings.Add.Response.result, "0"); // success, but not really
-			response.put(JsonStrings.Add.Response.result_message, 
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.Complete.code);
+			response.put(JsonStrings.Result.result_message, 
 					"You are now watching Channel " + existingStream.getChannel().getId());
 			response.put(JsonStrings.Watch.Response.channel_id, String.valueOf(existingStream.getChannel().getId()));
 			response.put(JsonStrings.Watch.Response.client_id, String.valueOf(existingStream.getId()));
@@ -1380,8 +1395,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		if (!gotAdminPass && !gotChannelId) {
 			log.error("Did not receive expected JSON fields (admin pass and channel ID) in Modify request! CHANNEL NOT MODIFIED.");
-			response.put(JsonStrings.Modify.Response.result, JsonStrings.Result.IncorrectJsonFields.code);
-			response.put(JsonStrings.Modify.Response.result_message, JsonStrings.Result.IncorrectJsonFields.message);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.IncorrectJsonFields.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.IncorrectJsonFields.message);
 			return response;
 		}
 
@@ -1438,8 +1453,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			channel.resetName(json_name);
 		}
 
-		response.put(JsonStrings.Remove.Response.result, JsonStrings.Result.Complete.code);
-		response.put(JsonStrings.Remove.Response.result_message, JsonStrings.Result.Complete.message);
+		response.put(JsonStrings.Result.result_code, JsonStrings.Result.Complete.code);
+		response.put(JsonStrings.Result.result_message, JsonStrings.Result.Complete.message);
 		return response;
 	}
 

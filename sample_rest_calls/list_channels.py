@@ -29,8 +29,8 @@ class GENICinemaTester(object):
         conn.request(action, path, body, headers)
         response = conn.getresponse()
         ret = (response.status, response.reason, response.read())
-        print json.dumps(response, sort_keys=True, indent=4, separators=(',', ': '))
-        conn.close()
+	print ret
+	conn.close()
         return ret
 
 gc = GENICinemaTester('127.0.0.1')

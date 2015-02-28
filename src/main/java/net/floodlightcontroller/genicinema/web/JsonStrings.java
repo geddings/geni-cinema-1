@@ -18,9 +18,9 @@ public class JsonStrings {
 	private static final String GATEWAY_PROTOCOL = "gateway_protocol";
 	private static final String RESULT = "result";
 	private static final String RESULT_MESSAGE = "message";
-	private static final String AGGREGATE_NAME = "aggregate";
 	private static final String INGRESS_GWS = "ingress_gateways";
 	private static final String EGRESS_GWS = "egress_gateways";
+	private static final String DEMAND = "demand";
 	
 	public static class Result {
 		private Result() {};
@@ -141,8 +141,6 @@ public class JsonStrings {
 			public static final String gateway_ip = GATEWAY_IP;
 			public static final String gateway_port = GATEWAY_PORT;
 			public static final String gateway_protocol = GATEWAY_PROTOCOL;
-			public static final String result = RESULT; // success or failure
-			public static final String result_message = RESULT_MESSAGE;
 		}	
 	}
 	
@@ -164,8 +162,6 @@ public class JsonStrings {
 			public static final String gateway_ip = GATEWAY_IP;
 			public static final String gateway_port = GATEWAY_PORT;
 			public static final String gateway_protocol = GATEWAY_PROTOCOL;
-			public static final String result = RESULT; // success or failure
-			public static final String result_message = RESULT_MESSAGE;
 		}	
 	}
 	
@@ -178,8 +174,6 @@ public class JsonStrings {
 
 		public static class Response {
 			private Response() {};
-			public static final String result = RESULT; // success or failure
-			public static final String result_message = RESULT_MESSAGE;
 		}	
 	}
 
@@ -193,8 +187,6 @@ public class JsonStrings {
 
 		public static class Response {
 			private Response() {};
-			public static final String result = RESULT; // success or failure
-			public static final String result_message = RESULT_MESSAGE;
 		}
 	}
 
@@ -220,8 +212,6 @@ public class JsonStrings {
 			public static final String gateway_ip = GATEWAY_IP;
 			public static final String gateway_port = GATEWAY_PORT;
 			public static final String gateway_protocol = GATEWAY_PROTOCOL;
-			public static final String result = RESULT; // success or failure
-			public static final String result_message = RESULT_MESSAGE;
 		}
 	}
 
@@ -234,11 +224,9 @@ public class JsonStrings {
 		public static class Response {
 			private Response() {};
 			public static final String name = NAME;
-			public static final String aggregate_name = AGGREGATE_NAME;
 			public static final String description = DESCRIPTION;
 			public static final String channel_id = CHANNEL_ID;
-			public static final String result = RESULT; // success or failure
-			public static final String result_message = RESULT_MESSAGE;
+			public static final String demand = DEMAND;
 		}
 	}
 	

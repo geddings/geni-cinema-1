@@ -36,8 +36,8 @@ class GENICinemaTester(object):
 gc = GENICinemaTester('127.0.0.1')
 
 watch = {
-    "channel_id":"4",
-    "client_id":"3",
+    "channel_id":"3",
+    "client_id":"",
     "view_password":"12345"
 }
 

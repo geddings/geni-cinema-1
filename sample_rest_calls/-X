@@ -1,0 +1,9 @@
+HTTP/1.1 405 Method Not Allowed
+Content-Type: application/json
+Date: Sat, 28 Feb 2015 20:00:25 GMT
+Accept-Ranges: bytes
+Allow: OPTIONS, DELETE
+Server: Restlet-Framework/2.2m3
+Connection: keep-alive
+Transfer-Encoding: chunked
+
