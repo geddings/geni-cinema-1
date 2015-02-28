@@ -1371,13 +1371,13 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 					break;
 				case JsonStrings.Modify.Request.name:
 					json_name = jp.getText();
-					gotNewName = false;
+					gotNewName = true;
 					break;
 				case JsonStrings.Modify.Request.description:
 					json_description = jp.getText();
-					gotNewDescription = false;
+					gotNewDescription = true;
 					break;
-				case JsonStrings.Remove.Request.channel_id:
+				case JsonStrings.Modify.Request.channel_id:
 					json_channelId = jp.getText().trim();
 					gotChannelId = true;
 					break;
@@ -1393,7 +1393,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * Check to make sure all expected/required JSON fields 
 		 * were received in the Modify request. If not, bail out.
 		 */
-		if (!gotAdminPass && !gotChannelId) {
+		if (!gotAdminPass || !gotChannelId) {
 			log.error("Did not receive expected JSON fields (admin pass and channel ID) in Modify request! CHANNEL NOT MODIFIED.");
 			response.put(JsonStrings.Result.result_code, JsonStrings.Result.IncorrectJsonFields.code);
 			response.put(JsonStrings.Result.result_message, JsonStrings.Result.IncorrectJsonFields.message);
