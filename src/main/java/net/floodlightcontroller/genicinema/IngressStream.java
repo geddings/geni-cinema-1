@@ -42,7 +42,7 @@ public class IngressStream {
 		return this.ingress;
 	}
 	
-	public VLCStreamServer getServer() {
+	public VLCStreamServer getVLCSServer() {
 		return this.server;
 	}
 	

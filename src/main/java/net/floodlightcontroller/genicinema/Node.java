@@ -1,5 +1,7 @@
 package net.floodlightcontroller.genicinema;
 
+import java.util.ArrayList;
+
 import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.OFPort;
 
@@ -13,10 +15,10 @@ import org.projectfloodlight.openflow.types.OFPort;
  */
 public class Node {
 	private DatapathId ofSwitch;
-	private OFPort ingressSwitchPort;
-	private OFPort egressSwitchPort;
+	private ArrayList<OFPort> ingressSwitchPort;
+	private ArrayList<OFPort> egressSwitchPort;
 	
-	private Node(DatapathId dpid, OFPort in, OFPort out) {
+	private Node(DatapathId dpid, ArrayList<OFPort> in, ArrayList<OFPort> out) {
 		ofSwitch = dpid;
 		ingressSwitchPort = in;
 		egressSwitchPort = out;
@@ -27,11 +29,19 @@ public class Node {
 	}
 	
 	public OFPort getIngressPort() {
-		return ingressSwitchPort;
+		return ingressSwitchPort.get(0);
 	}
 	
 	public OFPort getEgressPort() {
-		return egressSwitchPort;
+		return egressSwitchPort.get(0);
+	}
+	
+	public ArrayList<OFPort> getIngressPorts() {
+		return new ArrayList<OFPort>(ingressSwitchPort);
+	}
+	
+	public ArrayList<OFPort> getEgressPorts() {
+		return new ArrayList<OFPort>(egressSwitchPort);
 	}
 	
 	public NodeBuilder createBuilder() {
@@ -95,19 +105,19 @@ public class Node {
 	
 	public static class NodeBuilder { // static allows instantiation independent of an existing Node object
 		private DatapathId b_ofSwitch;
-		private OFPort b_ingressSwitchPort;
-		private OFPort b_egressSwitchPort;
+		private ArrayList<OFPort> b_ingressSwitchPort;
+		private ArrayList<OFPort> b_egressSwitchPort;
 		
 		public NodeBuilder() {
 			this.b_ofSwitch = null;
-			this.b_ingressSwitchPort = null;
-			this.b_egressSwitchPort = null;
+			this.b_ingressSwitchPort = new ArrayList<OFPort>();
+			this.b_egressSwitchPort = new ArrayList<OFPort>();
 		}
 		
 		private NodeBuilder(Node node) {
 			this.b_ofSwitch = node.ofSwitch;
-			this.b_ingressSwitchPort = node.ingressSwitchPort;
-			this.b_egressSwitchPort = node.egressSwitchPort;
+			this.b_ingressSwitchPort = new ArrayList<OFPort>(node.ingressSwitchPort);
+			this.b_egressSwitchPort = new ArrayList<OFPort>(node.egressSwitchPort);
 		}
 		
 		public NodeBuilder setSwitchDpid(DatapathId dpid) {
@@ -115,12 +125,22 @@ public class Node {
 			return this;
 		}
 		
-		public NodeBuilder setIngressPort(OFPort ingress) {
+		public NodeBuilder addIngressPort(OFPort ingress) {
+			this.b_ingressSwitchPort.add(ingress);
+			return this;
+		}
+		
+		public NodeBuilder addEgressPort(OFPort egress) {
+			this.b_egressSwitchPort.add(egress);
+			return this;
+		}
+		
+		public NodeBuilder setIngressPorts(ArrayList<OFPort> ingress) {
 			this.b_ingressSwitchPort = ingress;
 			return this;
 		}
 		
-		public NodeBuilder setEgressPort(OFPort egress) {
+		public NodeBuilder setEgressPorts(ArrayList<OFPort> egress) {
 			this.b_egressSwitchPort = egress;
 			return this;
 		}

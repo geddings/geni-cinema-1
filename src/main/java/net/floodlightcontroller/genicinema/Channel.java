@@ -1,10 +1,10 @@
 package net.floodlightcontroller.genicinema;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.projectfloodlight.openflow.protocol.OFBucket;
 import org.projectfloodlight.openflow.types.OFGroup;
@@ -12,8 +12,9 @@ import org.projectfloodlight.openflow.types.OFGroup;
 /**
  * An abstraction for the components that make up
  * a particular video channel. Immutable except for
- * counts and live-ness, which can be inc/dec and 
- * toggled respectively.
+ * name, description, view and admin passwords,
+ * counts, and live-ness, which can be inc/dec and 
+ * toggled respectively. (So not really immutable anymore...)
  * 
  * @author ryan, rizard@g.clemson.edu
  *
@@ -66,9 +67,17 @@ public class Channel {
 	public String getName() {
 		return this.name;
 	}
+	
+	public void resetName(String name) {
+		this.name = name;
+	}
 
 	public String getDescription() {
 		return this.description;
+	}
+	
+	public void resetDescription(String description) {
+		this.description = description;
 	}
 
 	public int getId() {
@@ -86,9 +95,17 @@ public class Channel {
 	public String getViewPassword() {
 		return this.viewPassword;
 	}
+	
+	public void resetViewPassword(String viewPassword) {
+		this.viewPassword = viewPassword;
+	}
 
 	public String getAdminPassword() {
 		return this.adminPassword;
+	}
+	
+	public void resetAdminPassword(String adminPassword) {
+		this.adminPassword = adminPassword;
 	}
 
 	public boolean getLive() {
@@ -358,7 +375,7 @@ public class Channel {
 			b_live = false;
 			b_demandCount = 0;
 			b_group = null;
-			b_bucketLists = new HashMap<Node, Map<Integer, OFBucket>>();
+			b_bucketLists = new ConcurrentHashMap<Node, Map<Integer, OFBucket>>();
 		}
 
 		private ChannelBuilder(Channel channel) {
@@ -372,7 +389,7 @@ public class Channel {
 			b_live = channel.live;
 			b_demandCount = channel.demandCount;
 			b_group = OFGroup.of(channel.group.getGroupNumber());
-			b_bucketLists = new HashMap<Node, Map<Integer, OFBucket>>(channel.bucketLists);
+			b_bucketLists = new ConcurrentHashMap<Node, Map<Integer, OFBucket>>(channel.bucketLists);
 		}
 
 		public ChannelBuilder setName(String name) {

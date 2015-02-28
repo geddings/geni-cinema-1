@@ -3,19 +3,17 @@ package net.floodlightcontroller.genicinema;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.projectfloodlight.openflow.protocol.OFBucket;
 import org.projectfloodlight.openflow.protocol.OFFactory;
 import org.projectfloodlight.openflow.protocol.OFFlowAdd;
 import org.projectfloodlight.openflow.protocol.OFFlowDelete;
 import org.projectfloodlight.openflow.protocol.OFFlowModify;
-import org.projectfloodlight.openflow.protocol.OFFlowModifyStrict;
 import org.projectfloodlight.openflow.protocol.OFGroupAdd;
 import org.projectfloodlight.openflow.protocol.OFGroupDelete;
 import org.projectfloodlight.openflow.protocol.OFGroupModify;
@@ -47,7 +45,6 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.MappingJsonFactory;
-import com.google.common.collect.ImmutableList;
 
 import net.floodlightcontroller.core.FloodlightContext;
 import net.floodlightcontroller.core.IOFMessageListener;
@@ -74,7 +71,6 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	/* 
 	 * Services 
 	 */
-
 	private static IOFSwitchService switchService;
 	private static IRestApiService restApiService;
 	private static Logger log;
@@ -82,11 +78,6 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	/*
 	 * Class variables
 	 */
-
-	/* Used by the garbage collector */
-	private static GENICinemaManager instance;
-	private static ScheduledThreadPoolExecutor clientGarbageCollectorExecutor;
-	private static Runnable clientGarbageCollector;
 
 	/* All available Channels per aggregate per VLC Server */
 	private volatile static Map<String, ArrayList<Channel>> channelsPerAggregate;
@@ -98,20 +89,24 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	private volatile static Map<String, ArrayList<EgressStream>> egressStreamsPerAggregate;
 
 	/* Ongoing Ingress Streams */
-	private volatile static Map<String, ArrayList<IngressStream>> ingressStreamsPerAggregate;
+	private volatile static Map<Channel, IngressStream> channelToIngressStreamBindings;
 
 	/* All available VLCSS per Server/Gateway */
 	private volatile static Map<Server, ArrayList<VLCStreamServer>> vlcStreamsPerServer;
+	private volatile static Map<Server, Integer> numAvailableVlcStreamsPerServer;
 	private volatile static Map<Gateway, ArrayList<VLCStreamServer>> vlcStreamsPerEgressGateway;
 	private volatile static Map<Gateway, Integer> numAvailableVlcStreamsPerEgressGateway;
 
-	/* All Aggregates in the GENI world */
+	/* 1-to-1 Mapping b/t Ingress GW and Server */
+	private volatile static Map<Gateway, Server> ingressGatewayToServerBindings;
+
+	/* All GENI resources. This has turned into a single item and not a list as the code evolved (due to stitching). */
 	private volatile static ArrayList<Aggregate> aggregates;
 
 	/* All clients (EgressStream's) and Channels will have a unique ID. 
 	 * TODO Perhaps should use UUID or something stronger. */
 	private volatile static int clientIdGenerator = 0;
-	private volatile static int channelIdGenerator = 0;
+	private volatile static int channelIdGenerator = -1; /* Start at -1 so that the first "default" Channel is 0 */
 	private volatile static int groupIDGenerator = 0;
 
 	/*
@@ -147,7 +142,6 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		switchService = context.getServiceImpl(IOFSwitchService.class);
 		restApiService = context.getServiceImpl(IRestApiService.class);
 		log = LoggerFactory.getLogger(GENICinemaManager.class);
-		instance = this;
 	}
 
 	@Override
@@ -160,33 +154,74 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * Initialize all class variables.
 		 */
 		aggregates = new ArrayList<Aggregate>(2);
-		channelsPerAggregate = new HashMap<String, ArrayList<Channel>>(255); // for initial test, start of with a predefined two channels
-		ingressStreamsPerAggregate = new HashMap<String, ArrayList<IngressStream>>(100); // --> need two ingress streams
-		egressStreamsPerAggregate = new HashMap<String, ArrayList<EgressStream>>(1000); // "large" number of clients possible
-		vlcStreamsPerServer = new HashMap<Server, ArrayList<VLCStreamServer>>(100);
-		vlcStreamsPerEgressGateway = new HashMap<Gateway, ArrayList<VLCStreamServer>>(100);
-		numAvailableVlcStreamsPerEgressGateway = new HashMap<Gateway, Integer>(100);
-		switchToEgressGatewayBindings = new HashMap<Node, Gateway>(5); // this is for telling which OVS corresponds to which egress GW and vice versa
+		channelsPerAggregate = new ConcurrentHashMap<String, ArrayList<Channel>>(255); // for initial test, start of with a predefined two channels
+		channelToIngressStreamBindings = new ConcurrentHashMap<Channel, IngressStream>(255); // --> need two ingress streams
+		egressStreamsPerAggregate = new ConcurrentHashMap<String, ArrayList<EgressStream>>(1000); // "large" number of clients possible
+		vlcStreamsPerServer = new ConcurrentHashMap<Server, ArrayList<VLCStreamServer>>(100);
+		numAvailableVlcStreamsPerServer = new ConcurrentHashMap<Server, Integer>(100);
+		vlcStreamsPerEgressGateway = new ConcurrentHashMap<Gateway, ArrayList<VLCStreamServer>>(100);
+		numAvailableVlcStreamsPerEgressGateway = new ConcurrentHashMap<Gateway, Integer>(100);
+		switchToEgressGatewayBindings = new ConcurrentHashMap<Node, Gateway>(5); // this is for telling which OVS corresponds to which egress GW and vice versa
+		ingressGatewayToServerBindings = new ConcurrentHashMap<Gateway, Server>(2); // we assume a 1-to-1 mapping
 
 		/*
-		 * For now, let's fake an existing aggregate w/o discovery.
+		 * Set up the topology. TODO We should have a way to define this in an XML file or something...
+		 */
+
+		ArrayList<Gateway> igws = new ArrayList<Gateway>(2);
+		ArrayList<Server> servers = new ArrayList<Server>(2);
+
+		/*
+		 * Ingress GW 1
 		 */
 		Gateway ingress_gw = new Gateway.GatewayBuilder()
-		.setPrivateIP(IPv4Address.of("10.0.2.2"))
-		.setPublicIP(IPv4Address.of("130.127.215.170")) // should be correct now
+		.setPrivateIP(IPv4Address.of("10.10.0.1"))
+		.setPublicIP(IPv4Address.of("130.127.215.170"))
 		.build();
+		igws.add(ingress_gw);
 
+		/*
+		 * Server 1
+		 */
 		Node server_ovs = new Node.NodeBuilder()
-		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:00:01")) // was 00:02
-		.setIngressPort(OFPort.LOCAL)
-		.setEgressPort(OFPort.of(1)) // should be correct now
+		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:00:11")) 
+		.addIngressPort(OFPort.LOCAL)
+		.addEgressPort(OFPort.of(1)) // should be correct now
 		.build();
 		Server server = new Server.ServerBuilder()
 		.setPrivateIP(ingress_gw.getPrivateIP()) // for initial test, server will use public IP as ingress GW
 		.setPublicIP(ingress_gw.getPublicIP())
 		.setOVSNode(server_ovs)
 		.build();
+		servers.add(server);
 		vlcStreamsPerServer.put(server, new ArrayList<VLCStreamServer>());
+		ingressGatewayToServerBindings.put(ingress_gw, server);
+
+		/*
+		 * Ingress GW 2
+		 *
+		ingress_gw = new Gateway.GatewayBuilder()
+		.setPrivateIP(IPv4Address.of("10.10.0.1"))
+		.setPublicIP(IPv4Address.of("130.127.215.171"))
+		.build();
+		igws.add(ingress_gw);
+
+		/*
+		 * Server 2
+		 *
+		server_ovs = new Node.NodeBuilder()
+		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:00:22")) 
+		.addIngressPort(OFPort.LOCAL)
+		.addEgressPort(OFPort.of(1)) // should be correct now
+		.build();
+		server = new Server.ServerBuilder()
+		.setPrivateIP(ingress_gw.getPrivateIP()) // for initial test, server will use public IP as ingress GW
+		.setPublicIP(ingress_gw.getPublicIP())
+		.setOVSNode(server_ovs)
+		.build();
+		servers.add(server);
+		vlcStreamsPerServer.put(server, new ArrayList<VLCStreamServer>());
+		ingressGatewayToServerBindings.put(ingress_gw, server);
 
 		/*
 		 * This is the root OVS.
@@ -194,9 +229,14 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * Just FLOOD all IP and ARP packets.
 		 */
 		Node root_ovs = new Node.NodeBuilder()
-		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:00:02"))
-		.setIngressPort(OFPort.of(1)) 
-		.setEgressPort(OFPort.FLOOD)
+		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:11:11"))
+		.addIngressPort(OFPort.of(1)) 
+		//.addIngressPort(OFPort.of(2))
+		.addEgressPort(OFPort.of(3))
+		.addEgressPort(OFPort.of(4))
+		.addEgressPort(OFPort.of(5))
+		.addEgressPort(OFPort.of(6))
+		.addEgressPort(OFPort.of(7))
 		.build();
 
 		/*
@@ -204,9 +244,9 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		ArrayList<Node> ovss = new ArrayList<Node>(5);
 		Node ovs_switch = new Node.NodeBuilder()
-		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:00:03"))
-		.setIngressPort(OFPort.of(1))
-		.setEgressPort(OFPort.of(2))
+		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:11"))
+		.addIngressPort(OFPort.of(1))
+		.addEgressPort(OFPort.of(2))
 		.build();
 		ovss.add(ovs_switch);
 		/*
@@ -214,7 +254,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		ArrayList<Gateway> egws = new ArrayList<Gateway>(5);
 		Gateway egress_gw = new Gateway.GatewayBuilder()
-		.setPrivateIP(IPv4Address.of("10.10.1.1"))
+		.setPrivateIP(IPv4Address.of("10.10.0.2"))
 		.setPublicIP(IPv4Address.of("130.127.88.1"))
 		.build();
 		egws.add(egress_gw);
@@ -225,16 +265,16 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * Switch 2
 		 */
 		ovs_switch = new Node.NodeBuilder()
-		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:00:04"))
-		.setIngressPort(OFPort.of(1))
-		.setEgressPort(OFPort.of(2))
+		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:22"))
+		.addIngressPort(OFPort.of(1))
+		.addEgressPort(OFPort.of(2))
 		.build();
 		ovss.add(ovs_switch);
 		/*
 		 * Egress GW 2
 		 */
 		egress_gw = new Gateway.GatewayBuilder()
-		.setPrivateIP(IPv4Address.of("10.10.1.1"))
+		.setPrivateIP(IPv4Address.of("10.10.0.2"))
 		.setPublicIP(IPv4Address.of("130.127.88.2"))
 		.build();
 		egws.add(egress_gw);
@@ -245,16 +285,16 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * Switch 3
 		 */
 		ovs_switch = new Node.NodeBuilder()
-		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:00:05"))
-		.setIngressPort(OFPort.of(1))
-		.setEgressPort(OFPort.of(2))
+		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:33"))
+		.addIngressPort(OFPort.of(1))
+		.addEgressPort(OFPort.of(2))
 		.build();
 		ovss.add(ovs_switch);
 		/*
 		 * Egress GW 3
 		 */
 		egress_gw = new Gateway.GatewayBuilder()
-		.setPrivateIP(IPv4Address.of("10.10.1.1"))
+		.setPrivateIP(IPv4Address.of("10.10.0.2"))
 		.setPublicIP(IPv4Address.of("130.127.88.3"))
 		.build();
 		egws.add(egress_gw);
@@ -265,16 +305,16 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * Switch 4
 		 */
 		ovs_switch = new Node.NodeBuilder()
-		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:00:06"))
-		.setIngressPort(OFPort.of(1))
-		.setEgressPort(OFPort.of(2))
+		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:44"))
+		.addIngressPort(OFPort.of(1))
+		.addEgressPort(OFPort.of(2))
 		.build();
 		ovss.add(ovs_switch);
 		/*
 		 * Egress GW 4
 		 */
 		egress_gw = new Gateway.GatewayBuilder()
-		.setPrivateIP(IPv4Address.of("10.10.1.1"))
+		.setPrivateIP(IPv4Address.of("10.10.0.2"))
 		.setPublicIP(IPv4Address.of("130.127.88.4"))
 		.build();
 		egws.add(egress_gw);
@@ -283,32 +323,32 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 
 		/*
 		 * Switch 5
-		 */
+		 *
 		ovs_switch = new Node.NodeBuilder()
-		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:00:07"))
-		.setIngressPort(OFPort.of(1))
-		.setEgressPort(OFPort.of(2))
+		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:55"))
+		.addIngressPort(OFPort.of(1))
+		.addEgressPort(OFPort.of(2))
 		.build();
 		ovss.add(ovs_switch);
 		/*
 		 * Egress GW 5
-		 */
+		 *
 		egress_gw = new Gateway.GatewayBuilder()
-		.setPrivateIP(IPv4Address.of("10.10.1.1"))
+		.setPrivateIP(IPv4Address.of("10.10.0.2"))
 		.setPublicIP(IPv4Address.of("130.127.88.5"))
 		.build();
 		egws.add(egress_gw);
 		vlcStreamsPerEgressGateway.put(egress_gw, new ArrayList<VLCStreamServer>());
-		switchToEgressGatewayBindings.put(ovs_switch, egress_gw);
+		switchToEgressGatewayBindings.put(ovs_switch, egress_gw); */
 
 		Aggregate clemson = new Aggregate.AggregateBuilder()
-		.addServer(server)
+		.addServers(servers)
+		.setIngressGateways(igws)
 		.setEgressGateways(egws)
-		.addIngressGateway(ingress_gw)
 		.addRootSwitch(root_ovs)
 		.setSwitches(ovss)
 		.setName("Clemson")
-		.setDescription("First time creating a GENI Cinema aggregate")
+		.setDescription("The GENI Cinema resources.")
 		.build();
 
 		addAggregate(clemson); // initializes all class variables dependent on Aggregates
@@ -324,23 +364,29 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		VLCStreamServerBuilder vlcssb = new VLCStreamServerBuilder();
 		int tcpPort = 31000;
 		int udpPort = 32000;
+		int allowedSockets = 100;
 
 		/*
-		 * Do the Ingress GW (only one of these, so can use 'server' directly)
+		 * Do the Ingress GWs' (Y of these)
 		 */
-		for (int i = 0; i < 100; i++) {
-			vsb.setIP(server.getPublicIP())
-			.setPort(TransportPort.of(tcpPort++)) // will need to set this port
-			.setProtocol(IpProtocol.TCP);
-			pubSock = vsb.build();
-			vsb.setIP(server.getPrivateIP())
-			.setPort(TransportPort.of(udpPort++)) 
-			.setProtocol(IpProtocol.UDP);
-			privSock = vsb.build();
+		for (Server s : clemson.getServers()) {
+			for (int i = 0; i < allowedSockets; i++) {
+				vsb.setIP(s.getPublicIP())
+				.setPort(TransportPort.of(tcpPort++)) // will need to set this port
+				.setProtocol(IpProtocol.TCP);
+				pubSock = vsb.build();
+				vsb.setIP(s.getPrivateIP())
+				.setPort(TransportPort.of(udpPort++)) 
+				.setProtocol(IpProtocol.UDP);
+				privSock = vsb.build();
 
-			vlcssb.setIngress(pubSock)
-			.setEgress(privSock);
-			vlcStreamsPerServer.get(server).add(vlcssb.build());
+				vlcssb.setIngress(pubSock)
+				.setEgress(privSock);
+				vlcStreamsPerServer.get(s).add(vlcssb.build());
+			}
+			tcpPort += 100;
+			udpPort += 100;
+			numAvailableVlcStreamsPerServer.put(s, allowedSockets);
 		}
 
 		/*
@@ -349,8 +395,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		for (Gateway egw : clemson.getEgressGateways()) {
 			udpPort = 32000;
 			tcpPort = 33000;
-			int limit = 100;
-			for (int i = 0; i < limit; i++) {
+			for (int i = 0; i < allowedSockets; i++) {
 				vsb.setIP(egw.getPublicIP())
 				.setPort(TransportPort.of(tcpPort++)) // will need to set this port
 				.setProtocol(IpProtocol.TCP);
@@ -364,17 +409,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				.setEgress(pubSock);
 				vlcStreamsPerEgressGateway.get(egw).add(vlcssb.build());
 			}
-			numAvailableVlcStreamsPerEgressGateway.put(egw, limit);
+			numAvailableVlcStreamsPerEgressGateway.put(egw, allowedSockets);
 		}
-
-		/*
-		 * Lastly, start the garbage collector timer.
-		 */
-		clientGarbageCollectorExecutor = new ScheduledThreadPoolExecutor(1);
-		clientGarbageCollector = new StreamGarbageCollector();
-		clientGarbageCollectorExecutor.scheduleAtFixedRate(clientGarbageCollector, 1800, 
-				1800, TimeUnit.SECONDS);
-
 	}
 
 	/*
@@ -408,7 +444,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				log.debug("Got PI. DPID {}, Port {}", sw.getId().toString(), ((OFPacketIn) msg).getInPort());
 			}
 		}
-
+		
 		return Command.CONTINUE;
 	}
 
@@ -421,13 +457,13 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		/*
 		 * Add OFGroups to switch if it's a "sort" switch.
 		 */
-		log.debug("Switch {} connected. Checking if it's a sort switch.", switchId.toString());
+		log.trace("Switch {} connected. Checking if it's a sort switch.", switchId.toString());
 		initializeSortSwitchOFGroups(switchService.getSwitch(switchId));
 
-		log.debug("Switch {} connected. Removing any existing UDP flows if it's a GENI Cinema switch.", switchId.toString());
+		log.trace("Switch {} connected. Removing any existing UDP flows if it's a GENI Cinema switch.", switchId.toString());
 		removeExistingUDPFlows(switchService.getSwitch(switchId));
 
-		log.debug("Switch {} connected. Adding FLOOD flods if it's in the root tree.", switchId.toString());
+		log.trace("Switch {} connected. Adding FLOOD flows if it's in the root tree.", switchId.toString());
 		initializeRootSwitch(switchService.getSwitch(switchId));
 
 		/*
@@ -447,6 +483,26 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				log.debug("Switch {} does not belong to Aggregate {}.", switchId.toString(), aggregate.getName());
 			}
 		}
+
+		boolean readyToRock = true;
+		for (Aggregate aggregate : aggregates) {
+			if (aggregate.allSwitchesConnected() == false) {
+				readyToRock = false;
+				break;
+			}
+		}
+
+		if (readyToRock) {
+			log.info("All switches connected. Ready to rock!");
+			/*
+			 * Lastly, setup the default splash screen Channel.
+			 * A null ClientInfo implies it's the default Channel.
+			 */
+			addChannel("{\"" + JsonStrings.Add.Request.name + "\":\"Default\"," +
+					"\"" + JsonStrings.Add.Request.description + "\":\"The GENI Cinema Splash Screen.\"," +
+					"\"" + JsonStrings.Add.Request.view_password + "\":\"\"," +
+					"\"" + JsonStrings.Add.Request.admin_password + "\":\"\"}", null);
+		}	
 	}
 
 	@Override
@@ -480,8 +536,16 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	@Override
 	public synchronized ArrayList<Map<String, String>> getChannels() {
 		ArrayList<Map<String, String>> response = new ArrayList<Map<String, String>>();
-
+		
 		for (Aggregate aggregate : aggregates) {
+			if (!aggregate.allSwitchesConnected()) {
+				Map<String, String> keyValue = new HashMap<String, String>(2);
+				keyValue.put(JsonStrings.Query.Response.result, JsonStrings.Result.SwitchesNotReady.code);
+				keyValue.put(JsonStrings.Query.Response.result_message, JsonStrings.Result.SwitchesNotReady.message);
+				response.add(keyValue);
+				return response;
+			}
+			
 			ArrayList<Channel> channels = channelsPerAggregate.get(aggregate.getName());
 			if (channels == null) {
 				// no-op; skip to next aggregate
@@ -514,33 +578,167 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	}
 
 	@Override
-	public synchronized Map<String, String> clientKeepAlive(String json, ClientInfo clientInfo) {
-		// TODO Auto-generated method stub
-		return null;
+	public synchronized Map<String, ArrayList<String>> getGatewayInfo() {
+		Map<String, ArrayList<String>> response = new HashMap<String, ArrayList<String>>();
+		ArrayList<String> ingressIPs = new ArrayList<String>();
+		ArrayList<String> egressIPs = new ArrayList<String>();
+
+		Set<Gateway> ingressGateways = ingressGatewayToServerBindings.keySet();
+		Set<Gateway> egressGateways = vlcStreamsPerEgressGateway.keySet();
+
+		/*
+		 * List all possible ingress IPs.
+		 */
+		for (Gateway gw : ingressGateways) {
+			ingressIPs.add(gw.getPublicIP().toString()); /* will format in dotted-decimal */
+		}
+		/*
+		 * List all possible egress IPs.
+		 */
+		for (Gateway gw : egressGateways) {
+			egressIPs.add(gw.getPublicIP().toString()); /* will format in dotted-decimal */
+		}
+
+		response.put(JsonStrings.GatewayInfo.Response.ingress_gateways, ingressIPs);
+		response.put(JsonStrings.GatewayInfo.Response.egress_gateways, egressIPs);
+
+		return response;
 	}
 
 	@Override
 	public synchronized Map<String, String> clientDisconnect(String json, ClientInfo clientInfo) {
-		// TODO Auto-generated method stub
-		return null;
+		MappingJsonFactory f = new MappingJsonFactory();
+		JsonParser jp;
+
+		int reqFields = 0;
+		String json_clientId = "";
+
+		Map<String, String> response = new HashMap<String, String>();
+
+		try {
+			jp = f.createJsonParser(json);
+			jp.nextToken();
+			if (jp.getCurrentToken() != JsonToken.START_OBJECT) {
+				throw new IOException("Expected START_OBJECT");
+			}
+
+			while (jp.nextToken() != JsonToken.END_OBJECT) {
+				if (jp.getCurrentToken() != JsonToken.FIELD_NAME) {
+					throw new IOException("Expected FIELD_NAME");
+				}
+
+				String n = jp.getCurrentName();
+				jp.nextToken();
+
+				/*
+				 * Parse values from all expected JSON fields.
+				 */
+				switch (n) {
+				case JsonStrings.Disconnect.Request.client_id:
+					json_clientId = jp.getText().trim();
+					reqFields++;
+					break;
+				default:
+					log.error("Got unmatched JSON string in Watch-Channel input: {} : {}", n, jp.getText());
+				}
+			}
+		} catch (IOException e) {
+			log.error(e.getMessage());
+		}
+
+		/*
+		 * Check to make sure all expected/required JSON fields 
+		 * were received in the Add request. If not, bail out.
+		 */
+		if (reqFields < 1) {
+			log.error("Did not receive all expected JSON fields in Disconnect request! Only got {} matches. CLIENT STILL CONNECTED.", reqFields);
+			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.IncorrectJsonFields.code);
+			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.IncorrectJsonFields.message);
+			return response;
+		}
+
+		/*
+		 * Lookup the client to get it's EgressStream.
+		 */
+		int requestedClientAsInt = -1;
+		try {
+			requestedClientAsInt = Integer.parseInt(json_clientId);
+		} catch (NumberFormatException e) {
+			log.error("Could not parse specified Client ID '{}'.", json_clientId);
+			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ClientIdParseError.code);
+			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ClientIdParseError.message);
+			return response;
+		}
+
+		EgressStream existingStream = lookupClient(requestedClientAsInt);
+		if (existingStream == null) {
+			log.error("Could not locate client information for specified client ID {}.", json_clientId);
+			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ClientIdNotFound.code);
+			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ClientIdNotFound.message);
+			return response;
+		} else {
+			/*
+			 * Remove client by removing its bucket from the group for the Channel.
+			 * This is essentially the same as a Channel switch, but the new Channel
+			 * is never added.
+			 */
+			log.debug("Removing all flows from Channel {} upon Client {} disconnect", existingStream.getChannel().getId(), existingStream.getId());
+			removeEgressStreamFlows(existingStream);
+
+			//TODO this is messy, but lookup the EgressGateway given the client's VLCStreamServer
+			Gateway egressGateway = null;
+			for (Entry<Gateway, ArrayList<VLCStreamServer>> entry: vlcStreamsPerEgressGateway.entrySet()) {
+				if (entry.getValue().contains(existingStream.getVLCSSAtGateway())) {
+					egressGateway = entry.getKey();
+					break;
+				}
+			}
+			if (egressGateway == null) {
+				log.error("Could not lookup egress Gateway from VLCStreamServer. Is GC in an inconsistent state?");
+				response.put(JsonStrings.Disconnect.Response.result, JsonStrings.Result.EgressGatewayNotFound.code);
+				response.put(JsonStrings.Disconnect.Response.result_message, JsonStrings.Result.EgressGatewayNotFound.message);
+				return response;
+			} else {
+				/*
+				 * Now, restore resources to the manager.
+				 */
+				removeEgressStream(existingStream, egressGateway);
+
+				response.put(JsonStrings.Disconnect.Response.result, JsonStrings.Result.Complete.code);
+				response.put(JsonStrings.Disconnect.Response.result_message, JsonStrings.Result.Complete.message);
+				return response;
+			}			
+		}
 	}
 
 	@Override
 	public synchronized Map<String, String> addChannel(String json, ClientInfo clientInfo) {
-		/* 
-		 * This will presumably get us the client IP of the most recent hop.
-		 * e.g. If NAT is involved between us and the client, this should
-		 * give us the public-facing IP of the NAT server, which is what we
-		 * will directly communicate with over the Internet.
-		 */
-		String clientIP = clientInfo.getAddress(); 
-
 		MappingJsonFactory f = new MappingJsonFactory();
 		JsonParser jp;
 
 		ChannelBuilder cb = new ChannelBuilder();
 
 		Map<String, String> response = new HashMap<String, String>();
+
+		/* 
+		 * This will presumably get us the client IP of the most recent hop.
+		 * e.g. If NAT is involved between us and the client, this should
+		 * give us the public-facing IP of the NAT server, which is what we
+		 * will directly communicate with over the Internet.
+		 */
+		String clientIP;
+		if (clientInfo == null) {
+			clientIP = "0.0.0.0";
+			log.debug("ADDING DEFAULT CHANNEL / SPLASH SCREEN.");
+		} else {
+			clientIP = clientInfo.getAddress(); 
+			if (clientIP.equals("0.0.0.0")) {
+				log.error("RECEIVED A CLIENT_INFO IP OF 0.0.0.0. This should NEVER happen and might mess up the default Channel! Aborting Channel ADD.");
+				response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ClientIpAllZeros.code);
+				response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ClientIpAllZeros.message);
+				return response;
+			}
+		}
 
 		int reqFields = 0;
 		try {
@@ -592,8 +790,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		if (reqFields < 4) {
 			log.error("Did not receive all expected JSON fields in Add request! Only got {} matches. CHANNEL NOT ADDED.", reqFields);
-			response.put(JsonStrings.Add.Response.result, "1");
-			response.put(JsonStrings.Add.Response.result_message, "Did not receive all expected JSON fields in Add request.");
+			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.IncorrectJsonFields.code);
+			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.IncorrectJsonFields.message);
 			return response;
 		}
 
@@ -605,19 +803,17 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		try {
 			clientIPconverted = IPv4Address.of(clientIP);
 		} catch (Exception e) {
-			log.error("Could not parse client IP in JSON request to ADD a Channel.");
-			response.put(JsonStrings.Add.Response.result, "6");
-			response.put(JsonStrings.Add.Response.result_message, 
-					"Could not parse client IP to ADD a Channel. Client IP " + clientIP);
+			log.error("Could not parse client IP {} in JSON request to ADD a Channel.", clientIP);
+			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ClientIpParseError.code);
+			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ClientIpParseError.message);
 			return response;
 		}
 
 		Gateway ingressGW = findBestIngressGateway(clientIPconverted);		
 		if (ingressGW == null) {
 			log.error("Could not find an available GENI Cinema Ingress Gateway for the client with IP {}", clientIP);
-			response.put(JsonStrings.Add.Response.result, "2");
-			response.put(JsonStrings.Add.Response.result_message, 
-					"Could not find an available GENI Cinema Ingress Gateway for the client with IP " + clientIP);
+			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.IngressGatewayUnavailable.code);
+			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.IngressGatewayUnavailable.message);
 			return response;
 		}
 
@@ -625,19 +821,18 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * Check to see if there are any VLC servers with sockets available
 		 * that are reachable from the Gateway.
 		 */
-		Server hostServer = findBestHostServer(ingressGW); // TODO possibly return ArrayList of reachable Servers (to then search for a good one)
+		Server hostServer = findBestHostServer(ingressGW);
 
 		VLCStreamServer hostServerVLCSS = getVLCSSOnHostServer(hostServer);		
 		if (hostServerVLCSS ==  null) {
 			log.error("Could not find an available VLCStreamServer (i.e. an available VLC listen socket) for the client to stream to.");
-			response.put(JsonStrings.Add.Response.result, "3");
-			response.put(JsonStrings.Add.Response.result_message, 
-					"Could not allocate a new ingress stream to the GENI Cinema Service. Please try again and contact the admins if the problem persists.");
+			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.IngressVLCStreamServerUnavailable.code);
+			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.IngressVLCStreamServerUnavailable.message);
 			return response;
 		}
 
 		/*
-		 * Create the video-producing client. TODO not sure how to get src tp port info...
+		 * Create the video-producing client.
 		 */
 		VideoSocketBuilder vsb = new VideoSocketBuilder();
 		vsb.setIP(IPv4Address.of(clientIP))
@@ -651,15 +846,6 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 
 		IngressStream theStream = isb.build();
 
-		/* Update Manager with new IngressStream */
-		if (!addIngressStream(theStream)) {
-			log.error("Could not add new IngressStream to the Manager!");
-			response.put(JsonStrings.Add.Response.result, "4");
-			response.put(JsonStrings.Add.Response.result_message, 
-					"Could not add the allocated ingress stream to the GENI Cinema Service. Please try again and contact the admins if the problem persists.");
-			return response;
-		}
-
 		Channel theChannel = 
 				cb.setGroup(OFGroup.ZERO)
 				.setHostVLCStreamServer(hostServerVLCSS)
@@ -671,11 +857,10 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		/*
 		 * Update Manager with new Channel
 		 */
-		if (!addChannel(theChannel)) {
+		if (!addChannel(theChannel, theStream)) {
 			log.error("Could not add new Channel to the Manager!");
-			response.put(JsonStrings.Add.Response.result, "5");
-			response.put(JsonStrings.Add.Response.result_message, 
-					"Could not add the allocated channel to the GENI Cinema Service. Please try again and contact the admins if the problem persists.");
+			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ChannelAddError.code);
+			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ChannelAddError.message);
 			return response;
 		}
 
@@ -688,7 +873,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		response.put(JsonStrings.Add.Response.channel_id, Integer.toString(theChannel.getId()));
 		response.put(JsonStrings.Add.Response.description, theChannel.getDescription());
 		response.put(JsonStrings.Add.Response.gateway_ip, theStream.getGateway().getPublicIP().toString());
-		response.put(JsonStrings.Add.Response.gateway_port, theStream.getServer().getIngress().getPort().toString());
+		response.put(JsonStrings.Add.Response.gateway_port, theStream.getVLCSServer().getIngress().getPort().toString());
 		response.put(JsonStrings.Add.Response.name, theChannel.getName());
 		response.put(JsonStrings.Add.Response.view_password, theChannel.getViewPassword());
 		return response;
@@ -697,13 +882,11 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 
 	@Override
 	public synchronized Map<String, String> removeChannel(String json, ClientInfo clientInfo) {
-		String clientIP = clientInfo.getAddress(); 
-
 		MappingJsonFactory f = new MappingJsonFactory();
 		JsonParser jp;
 
-		String password = "";
-		int channelId = -1;
+		String json_adminPass = "";
+		String json_channelId = "";
 
 		Map<String, String> response = new HashMap<String, String>();
 
@@ -728,11 +911,11 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				 */
 				switch (n) {
 				case JsonStrings.Remove.Request.admin_password:
-					password = jp.getText();
+					json_adminPass = jp.getText();
 					reqFields++;
 					break;
 				case JsonStrings.Remove.Request.channel_id:
-					channelId = Integer.parseInt(jp.getText());
+					json_channelId = jp.getText().trim();
 					reqFields++;
 					break;
 				default:
@@ -749,24 +932,76 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		if (reqFields < 2) {
 			log.error("Did not receive all expected JSON fields in Remove request! Only got {} matches. CHANNEL NOT REMOVED.", reqFields);
-			response.put(JsonStrings.Add.Response.result, "1");
-			response.put(JsonStrings.Add.Response.result_message, "Did not receive all expected JSON fields in Remove request.");
+			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.IncorrectJsonFields.code);
+			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.IncorrectJsonFields.message);
 			return response;
 		}
 
 		/*
-		 * Now do something here to check for a valid video and remove it.
+		 * Lookup the Channel to see if it exists and is live.
+		 * The Channel will contain the sort Node and the Server.
 		 */
+		int requestedChannelAsInt = -1;
+		try {
+			requestedChannelAsInt = Integer.parseInt(json_channelId);
+		} catch (NumberFormatException e) {
+			log.error("Could not parse specified Channel ID '{}'.", json_channelId);
+			response.put(JsonStrings.Remove.Response.result, JsonStrings.Result.ChannelIdParseError.code);
+			response.put(JsonStrings.Remove.Response.result_message, JsonStrings.Result.ChannelIdParseError.message);
+			return response;
+		}
 
+		Channel channel = lookupChannel(requestedChannelAsInt);
+		if (channel == null) {
+			log.error("Could not locate specified Channel ID '{}'.", requestedChannelAsInt);
+			response.put(JsonStrings.Remove.Response.result, JsonStrings.Result.ChannelIdUnavailable.code);
+			response.put(JsonStrings.Remove.Response.result_message, JsonStrings.Result.ChannelIdUnavailable.message);
+			return response;
+		}
 
-		return null;
+		/*
+		 * Verify the client/producer has provided the correct administrative password.
+		 */
+		if (!json_adminPass.equals(channel.getAdminPassword())) {
+			log.error("Admin password '{}' is incorrect for Channel ID '{}' with AP of '" + channel.getAdminPassword() + "'.", 
+					json_adminPass, requestedChannelAsInt);
+			response.put(JsonStrings.Remove.Response.result, JsonStrings.Result.AdminPasswordIncorrect.code);
+			response.put(JsonStrings.Remove.Response.result_message, JsonStrings.Result.AdminPasswordIncorrect.message);
+			return response;
+		}
+
+		/*
+		 * Remove all clients from the Channel we're removing.
+		 * We will automatically switch them over to a default "not available" Channel.
+		 * (Hopefully they wont get too upset...)
+		 * 
+		 * TODO this will modify the list of buckets for that Channel many times...can we do all at once maybe?
+		 */
+		Aggregate aggregate = lookupAggregate(channel);
+		for (EgressStream es : egressStreamsPerAggregate.get(aggregate.getName())) {
+			if (es.getChannel().equals(channel)) {
+				/*
+				 * Found a Channel we need to remove.
+				 */
+				watchChannel("\"{\"" + JsonStrings.Watch.Request.client_id + "\":\"" + es.getId() + "\"" +
+						",\"" + JsonStrings.Watch.Request.view_password + "\":\"\"" +
+						",\"" + JsonStrings.Watch.Request.channel_id + "\":\"0\"}\"", null);
+			}
+		}
+
+		/*
+		 * Update the manager after we've switched over all the clients.
+		 * Removing the Channel will also remove the associated IngressStream
+		 */
+		removeChannel(channel);
+
+		response.put(JsonStrings.Remove.Response.result, JsonStrings.Result.Complete.code);
+		response.put(JsonStrings.Remove.Response.result_message, JsonStrings.Result.Complete.message);
+		return response;
 	}
 
 	@Override
 	public synchronized Map<String, String> watchChannel(String json, ClientInfo clientInfo) {
-
-		String clientIP = clientInfo.getAddress(); 
-
 		MappingJsonFactory f = new MappingJsonFactory();
 		JsonParser jp;
 
@@ -776,6 +1011,20 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		String json_viewPass = "";
 
 		Map<String, String> response = new HashMap<String, String>();
+
+		String clientIP;
+		if (clientInfo == null) {
+			clientIP = "0.0.0.0";
+			log.debug("Automatically switching Client to splash Channel.");
+		} else {
+			clientIP = clientInfo.getAddress(); 
+			if (clientIP.equals("0.0.0.0")) {
+				log.error("RECEIVED A CLIENT_INFO IP OF 0.0.0.0. This should NEVER happen and might mess up the default Channel! Aborting Channel WATCH.");
+				response.put(JsonStrings.Watch.Response.result, JsonStrings.Result.ClientIpAllZeros.code);
+				response.put(JsonStrings.Watch.Response.result_message, JsonStrings.Result.ClientIpAllZeros.message);
+				return response;
+			}
+		}
 
 		try {
 			jp = f.createJsonParser(json);
@@ -819,13 +1068,11 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		/*
 		 * Check to make sure all expected/required JSON fields 
 		 * were received in the Add request. If not, bail out.
-		 * TODO We should probably send a JSON description of 
-		 * the error condition back instead of an empty string.
 		 */
 		if (reqFields < 3) {
 			log.error("Did not receive all expected JSON fields in Add request! Only got {} matches. CHANNEL NOT ADDED.", reqFields);
-			response.put(JsonStrings.Add.Response.result, "1");
-			response.put(JsonStrings.Add.Response.result_message, "Did not receive all expected JSON fields in Watch request.");
+			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.IncorrectJsonFields.code);
+			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.IncorrectJsonFields.message);
 			return response;
 		}
 
@@ -838,17 +1085,27 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			requestedChannelAsInt = Integer.parseInt(json_channelId);
 		} catch (NumberFormatException e) {
 			log.error("Could not parse specified Channel ID '{}'.", json_channelId);
-			response.put(JsonStrings.Add.Response.result, "2");
-			response.put(JsonStrings.Add.Response.result_message, 
-					"Could not parse specified Channel ID. Please provide a positive, integer Channel ID.");
+			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ChannelIdParseError.code);
+			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ChannelIdParseError.message);
 			return response;
 		}
 
 		Channel channel = lookupChannel(requestedChannelAsInt);
 		if (channel == null) {
 			log.error("Could not locate specified Channel ID '{}'.", requestedChannelAsInt);
-			response.put(JsonStrings.Add.Response.result, "3");
-			response.put(JsonStrings.Add.Response.result_message, "The Channel ID specified is not available as this time.");
+			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ChannelIdUnavailable.code);
+			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ChannelIdUnavailable.message);
+			return response;
+		}
+
+		/*
+		 * Verify the client has provided the correct password.
+		 */
+		if (!json_viewPass.equals(channel.getViewPassword())) {
+			log.error("View password '{}' is incorrect for Channel ID '{}' with VP of '" + channel.getViewPassword() + "'.", 
+					json_viewPass, requestedChannelAsInt);
+			response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ViewPasswordIncorrect.code);
+			response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ViewPasswordIncorrect.message);
 			return response;
 		}
 
@@ -864,15 +1121,15 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				log.debug("Client ID was empty string. Assuming new client connection.");
 			} else {
 				log.error("Could not parse specified Client ID '{}'.", json_clientId);
-				response.put(JsonStrings.Add.Response.result, "4");
-				response.put(JsonStrings.Add.Response.result_message, "A client ID was provided, but it could not be parsed. Please check your client ID and try again.");
+				response.put(JsonStrings.Add.Response.result, JsonStrings.Result.ClientIdParseError.code);
+				response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.ClientIdParseError.message);
 				return response;
 			}
 		}
 
 		EgressStream existingStream;
 		if (requestedClientAsInt != -1) {
-			existingStream = lookupClient(requestedClientAsInt); // TODO this will return null even if we specify a junk client ID. Should probably see if "" CID --> null
+			existingStream = lookupClient(requestedClientAsInt);
 		} else {
 			existingStream = null;
 		}
@@ -901,12 +1158,11 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			/*
 			 * Determine a Gateway where the client can attach and watch.
 			 */
-			Gateway egressGW = findBestEgressGateway(IPv4Address.of(clientIP)); // TODO should base on where the video is located AND the client, not just the client...
+			Gateway egressGW = findBestEgressGateway(IPv4Address.of(clientIP));
 			if (egressGW == null) {
 				log.error("Could not locate a suitable egress Gateway for client IP {}", clientIP);
-				response.put(JsonStrings.Add.Response.result, "5");
-				response.put(JsonStrings.Add.Response.result_message, 
-						"The GENI Cinema Service could not find a suitable gateway for you to attach to. The service might be overloaded. Please try again later or contact the admins if the problem persists.");
+				response.put(JsonStrings.Add.Response.result, JsonStrings.Result.EgressGatewayUnavailable.code);
+				response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.EgressGatewayUnavailable.message);
 				return response;
 			}
 			log.debug("Found a suitable egress Gateway: {}", egressGW);
@@ -917,9 +1173,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			VLCStreamServer vlcss = getVLCSSOnGateway(egressGW);
 			if (vlcss == null) {
 				log.error("Could not allocate a VLCStreamServer on Gateway {}", egressGW.toString());
-				response.put(JsonStrings.Add.Response.result, "6");
-				response.put(JsonStrings.Add.Response.result_message, 
-						"The GENI Cinema Service could not allocate a connection for you at your local gateway. The service might be overloaded. Please try again later or contact the admins if the problem persists.");
+				response.put(JsonStrings.Add.Response.result, JsonStrings.Result.EgressVLCStreamServerUnavailable.code);
+				response.put(JsonStrings.Add.Response.result_message, JsonStrings.Result.EgressVLCStreamServerUnavailable.message);
 				return response;
 			}
 			log.debug("On egress Gateway {}, found an available VLCSS: {}", egressGW, vlcss);
@@ -1048,9 +1303,144 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	}
 
 	@Override
-	public synchronized String editChannel(String json, ClientInfo clientInfo) {
-		// TODO Auto-generated method stub
-		return "";
+	public synchronized Map<String, String> editChannel(String json, ClientInfo clientInfo) {
+		MappingJsonFactory f = new MappingJsonFactory();
+		JsonParser jp;
+
+		String json_adminPass = "";
+		String json_adminPassNew = "";
+		String json_viewPass = "";
+		String json_description = "";
+		String json_name = "";
+		String json_channelId = "";
+		
+		boolean gotAdminPass = false;
+		boolean gotChannelId = false;
+		boolean gotNewAdminPass = false;
+		boolean gotNewDescription = false;
+		boolean gotNewName = false;
+		boolean gotNewViewPass = false;
+
+		Map<String, String> response = new HashMap<String, String>();
+
+		try {
+			jp = f.createJsonParser(json);
+			jp.nextToken();
+			if (jp.getCurrentToken() != JsonToken.START_OBJECT) {
+				throw new IOException("Expected START_OBJECT");
+			}
+
+			while (jp.nextToken() != JsonToken.END_OBJECT) {
+				if (jp.getCurrentToken() != JsonToken.FIELD_NAME) {
+					throw new IOException("Expected FIELD_NAME");
+				}
+
+				String n = jp.getCurrentName();
+				jp.nextToken();
+
+				/*
+				 * Parse values from all expected JSON fields.
+				 */
+				switch (n) {
+				case JsonStrings.Modify.Request.admin_password:
+					json_adminPass = jp.getText();
+					gotAdminPass = true;
+					break;
+				case JsonStrings.Modify.Request.admin_password_new:
+					json_adminPassNew = jp.getText();
+					gotNewAdminPass = true;
+					break;
+				case JsonStrings.Modify.Request.view_password:
+					json_viewPass = jp.getText();
+					gotNewViewPass = true;
+					break;
+				case JsonStrings.Modify.Request.name:
+					json_name = jp.getText();
+					gotNewName = false;
+					break;
+				case JsonStrings.Modify.Request.description:
+					json_description = jp.getText();
+					gotNewDescription = false;
+					break;
+				case JsonStrings.Remove.Request.channel_id:
+					json_channelId = jp.getText().trim();
+					gotChannelId = true;
+					break;
+				default:
+					log.error("Got unmatched JSON string in Remove-Channel input: {} : {}", n, jp.getText());
+				}
+			}
+		} catch (IOException e) {
+			log.error(e.getMessage());
+		}
+
+		/*
+		 * Check to make sure all expected/required JSON fields 
+		 * were received in the Modify request. If not, bail out.
+		 */
+		if (!gotAdminPass && !gotChannelId) {
+			log.error("Did not receive expected JSON fields (admin pass and channel ID) in Modify request! CHANNEL NOT MODIFIED.");
+			response.put(JsonStrings.Modify.Response.result, JsonStrings.Result.IncorrectJsonFields.code);
+			response.put(JsonStrings.Modify.Response.result_message, JsonStrings.Result.IncorrectJsonFields.message);
+			return response;
+		}
+
+		/*
+		 * Lookup the Channel to see if it exists and is live.
+		 * The Channel will contain the sort Node and the Server.
+		 */
+		int requestedChannelAsInt = -1;
+		try {
+			requestedChannelAsInt = Integer.parseInt(json_channelId);
+		} catch (NumberFormatException e) {
+			log.error("Could not parse specified Channel ID '{}'.", json_channelId);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.ChannelIdParseError.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.ChannelIdParseError.message);
+			return response;
+		}
+
+		Channel channel = lookupChannel(requestedChannelAsInt);
+		if (channel == null) {
+			log.error("Could not locate specified Channel ID '{}'.", requestedChannelAsInt);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.ChannelIdUnavailable.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.ChannelIdUnavailable.message);
+			return response;
+		}
+
+		/*
+		 * Verify the client/producer has provided the correct administrative password.
+		 */
+		if (!json_adminPass.equals(channel.getAdminPassword())) {
+			log.error("Admin password '{}' is incorrect for Channel ID '{}' with AP of '" + channel.getAdminPassword() + "'.", 
+					json_adminPass, requestedChannelAsInt);
+			response.put(JsonStrings.Result.result_code, JsonStrings.Result.AdminPasswordIncorrect.code);
+			response.put(JsonStrings.Result.result_message, JsonStrings.Result.AdminPasswordIncorrect.message);
+			return response;
+		}
+
+		/*
+		 * Make requested modifications.
+		 */
+		if (gotNewAdminPass) {
+			log.debug("Resetting admin password of Channel {} with '{}'.", json_channelId, json_adminPassNew);
+			channel.resetAdminPassword(json_adminPassNew);
+		}
+		if (gotNewViewPass) {
+			log.debug("Resetting view password of Channel {} with '{}'.", json_channelId, json_viewPass);
+			channel.resetViewPassword(json_viewPass);
+		}
+		if (gotNewDescription) {
+			log.debug("Resetting description of Channel {} with '{}'.", json_channelId, json_description);
+			channel.resetDescription(json_description);
+		}
+		if (gotNewName) {
+			log.debug("Resetting name of Channel {} with '{}'.", json_channelId, json_name);
+			channel.resetName(json_name);
+		}
+
+		response.put(JsonStrings.Remove.Response.result, JsonStrings.Result.Complete.code);
+		response.put(JsonStrings.Remove.Response.result_message, JsonStrings.Result.Complete.message);
+		return response;
 	}
 
 	/*
@@ -1065,7 +1455,6 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			log.debug("Adding new Aggregate '{}'.", aggregate.getName());
 			aggregates.add(aggregate);
 			channelsPerAggregate.put(aggregate.getName(), new ArrayList<Channel>()); // maps will replace
-			ingressStreamsPerAggregate.put(aggregate.getName(), new ArrayList<IngressStream>()); 
 			egressStreamsPerAggregate.put(aggregate.getName(), new ArrayList<EgressStream>());
 			return;
 		}
@@ -1080,7 +1469,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		return null;
 	}
 
-	private Aggregate lookupAggregate(IngressStream whereAmI) {
+	/*private Aggregate lookupAggregate(IngressStream whereAmI) {
 		for (Aggregate aggregate : aggregates) {
 			if (ingressStreamsPerAggregate.get(aggregate.getName()).contains(whereAmI)) {
 				return aggregate;
@@ -1096,7 +1485,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			}
 		}
 		return null;
-	}
+	}*/
 
 	private Aggregate lookupAggregate(Server whereAmI) {
 		for (Aggregate aggregate : aggregates) {
@@ -1164,7 +1553,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	 * @param newChannel, The recently-added Channel
 	 * @return, true upon success; false upon failure
 	 */
-	private boolean addChannel(Channel newChannel) {
+	private boolean addChannel(Channel newChannel, IngressStream newIngressStream) {
 		Aggregate theAggregate = lookupAggregate(newChannel.getHostServer());
 
 		if (theAggregate == null) {
@@ -1183,12 +1572,16 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			 */
 			newChannel.getHostVLCStreamServer().setInUse();
 			channelsPerAggregate.get(theAggregate.getName()).add(newChannel);
+			channelToIngressStreamBindings.put(newChannel, newIngressStream);
 			return true;
 		}
 	}
 
 	/**
 	 * Takes an existing Channel and removes it from the Manager appropriately.
+	 * 
+	 * This will not disconnect all clients, so be sure to remove their flows
+	 * linked to this Channel prior to calling this function.
 	 * 
 	 * @param oldChannel, The Channel to remove
 	 * @return, true upon success; false upon failure
@@ -1206,37 +1599,14 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		if (channelsPerAggregate.get(theAggregate.getName()).contains(oldChannel)) {
 			oldChannel.getHostVLCStreamServer().setNotInUse();
-			//`
 			channelsPerAggregate.get(theAggregate.getName()).remove(oldChannel);
+			channelToIngressStreamBindings.remove(oldChannel);
 			return true;
 		} else {
 			/* 
 			 * Not found. Keep the resources if there are any.
 			 */
 			return false;
-		}
-	}
-
-
-	/**
-	 * Takes a new IngressStream and updates the Manager appropriately.
-	 * 
-	 * @param newIngressStream, The recently-added IngressStream
-	 * @return, true upon success; false upon failure
-	 */
-	private boolean addIngressStream(IngressStream newIngressStream) {
-		Aggregate theAggregate = lookupAggregate(newIngressStream.getServer());
-
-		/*
-		 * Add the IngressStream to the list.
-		 */
-		if (!ingressStreamsPerAggregate.containsKey(theAggregate.getName())) {
-			return false;
-		} else if (ingressStreamsPerAggregate.get(theAggregate.getName()).contains(newIngressStream)) {
-			return false;
-		} else {
-			ingressStreamsPerAggregate.get(theAggregate.getName()).add(newIngressStream);
-			return true;
 		}
 	}
 
@@ -1268,36 +1638,30 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	}
 
 	/**
-	 * Use the client's IP to try and determine where it is, and
-	 * thus it's closest ingress Gateway. Load-balancing, in addition
-	 * to location may be used to determine the most appropriate
-	 * Gateway. If a Gateway cannot be found, either no aggregates
-	 * are configured with an ingress Gateway, or the GENI Cinema
-	 * service is overloaded and cannot accept any additional channels.
+	 * Takes an expired EgressStream and updates the Manager appropriately.
 	 * 
-	 * @param clientIP, The IP address of the client; used to guess location.
-	 * @return A valid Gateway or null if one could not be found/allocated.
+	 * @param oldEgressStream, The recently-removed EgressStream
+	 * @return, true upon success; false upon failure
 	 */
-	private Gateway findBestIngressGateway(IPv4Address clientIP) {
-		/*
-		 * Look through the available aggregates to see who has a GW
-		 * that is the best match (closest?).
-		 */
-		int bestScore = Integer.MAX_VALUE;
-		Gateway bestGW = null;
-		int score;
+	private boolean removeEgressStream(EgressStream oldEgressStream, Gateway egressGateway) {
+		Aggregate theAggregate = lookupAggregate(oldEgressStream.getVLCSSAtGateway());
 
-		for (Aggregate aggregate : aggregates) {
-			ArrayList<Gateway> igs = aggregate.getIngressGateways();
-			for (Gateway ig : igs) {
-				score = geoLocateScore(ig.getPublicIP(), clientIP);
-				if (score < bestScore) {
-					bestScore = score;
-					bestGW = ig;
-				}
-			}
+		/*
+		 * Remove the EgressStream from the list.
+		 */
+		if (!egressStreamsPerAggregate.containsKey(theAggregate.getName())) {
+			return false;
+		} else if (egressStreamsPerAggregate.get(theAggregate.getName()).contains(oldEgressStream)) {
+			return false;
+		} else {
+			/*
+			 * Give back resources.
+			 */
+			oldEgressStream.getVLCSSAtGateway().setNotInUse();
+			egressStreamsPerAggregate.get(theAggregate.getName()).remove(oldEgressStream);
+			numAvailableVlcStreamsPerEgressGateway.put(egressGateway, numAvailableVlcStreamsPerEgressGateway.get(egressGateway).intValue() + 1);
+			return true;
 		}
-		return bestGW;
 	}
 
 	/**
@@ -1313,7 +1677,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		IPv4Address commonBits = ip1.and(ip2);
 		// TODO something cool here. For now, assume they all have the same score.
 
-		return 0;
+		return commonBits.getInt();
 	}
 
 	/**
@@ -1363,18 +1727,72 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	}
 
 	/**
+	 * Use the client's IP to try and determine where it is, and
+	 * thus it's closest ingress Gateway. Load-balancing, in addition
+	 * to location may be used to determine the most appropriate
+	 * Gateway. If a Gateway cannot be found, either no aggregates
+	 * are configured with an ingress Gateway, or the GENI Cinema
+	 * service is overloaded and cannot accept any additional channels.
+	 * 
+	 * @param clientIP, The IP address of the client; used to guess location.
+	 * @return A valid Gateway or null if one could not be found/allocated.
+	 */
+	private Gateway findBestIngressGateway(IPv4Address clientIP) {
+		/*
+		 * Look through the available aggregates to see who has a GW
+		 * that is the best match (closest?).
+		 */
+		int bestScore = Integer.MAX_VALUE;
+		Gateway closestGW = null;
+		Gateway lightestGW = null;
+		int score;
+		int mostAvailable = 0;
+
+		/*
+		 * For simplicity, always place the splash/default Channel
+		 * on the 0th aggregate and it's 0th ingress Gateway.
+		 */
+		if (clientIP.compareTo(IPv4Address.FULL_MASK) == 0) {
+			return aggregates.get(0).getIngressGateways().get(0);
+		}
+
+		for (Aggregate aggregate : aggregates) {
+			ArrayList<Gateway> igs = aggregate.getIngressGateways();
+			for (Gateway ig : igs) {
+				score = geoLocateScore(ig.getPublicIP(), clientIP);
+				if (score < bestScore) {
+					bestScore = score;
+					closestGW = ig;
+				}
+				Server server = ingressGatewayToServerBindings.get(ig);
+				if (numAvailableVlcStreamsPerServer.get(server).intValue() > mostAvailable) {
+					mostAvailable = numAvailableVlcStreamsPerServer.get(server).intValue();
+					lightestGW = ig;
+				}
+			}
+
+		}
+
+		/*
+		 * TODO/FIXME How to best:
+		 * (1) determine the quickest/best/closest route to an ingress GW?
+		 * (2) balance between the closest ingress GW and the most lightly-loaded?
+		 */
+
+		return lightestGW;
+	}
+
+	/**
 	 * Based on the ingress Gateway, determine which Server the video feed
 	 * should be routed to and hosted on.
+	 * 
+	 * This just returns the associated 1-to-1 mapped Server.
 	 * 
 	 * @param ingressGW, The Gateway serving as the entry-point in the GC network.
 	 * @return The Server the IngressStream should be stored on, or null upon failure.
 	 */
 	private Server findBestHostServer(Gateway ingressGW) {
-		for (Aggregate aggregate : aggregates) {
-			ArrayList<Server> servers = aggregate.getServers();
-			return servers.get(0); // TODO stupid approach for now
-		}
-		return null;
+		return ingressGatewayToServerBindings.get(ingressGW);
 	}
 
 	/**
@@ -1419,15 +1837,15 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		return null;
 	}
 
-
-	private boolean releaseResources() {
-		return false;
-	}
-
 	/**
 	 * For use when connecting a new client. Will always
 	 * return a "new" integer that has not been assigned
-	 * to a client (EgressStream).
+	 * to a client (EgressStream). The assumption is that we 
+	 * will never run long enough for or ever reach the max
+	 * value of an integer.
+	 * 
+	 * TODO Similar the the groups, a pool should be created
+	 * to allocate and return EgressStream IDs.
 	 * 
 	 * @return The next integer for a client. Will be unique (within reason).
 	 */
@@ -1438,9 +1856,14 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	/**
 	 * For use when connecting a new Channel. Will always
 	 * return a "new" integer that has not been assigned
-	 * to a Channel.
+	 * to a Channel. The assumption is that we will never
+	 * run long enough for or ever reach the max value of
+	 * an integer.
 	 * 
-	 * @return The next integer for a Channel. Will be unique (within reason).
+	 * TODO Similar the the groups, a pool should be created
+	 * to allocate and return Channel IDs.
+	 * 
+	 * @return The next integer for a Channel. Will be unique.
 	 */
 	private int generateChannelId() {
 		return ++channelIdGenerator;
@@ -1450,6 +1873,11 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	 * For use when connecting a new Channel. Will always
 	 * return a new OFGroup that has not been assigned
 	 * to a Channel.
+	 * 
+	 * FIXME The fatal flaw here is that if the controller
+	 * runs long enough, we will reach the group limit, 
+	 * from 1 to 255 I believe. We need to turn this into
+	 * a stack/dequeue to allow pushing and popping groups.
 	 * 
 	 * @return The next OFGroup for a Channel.
 	 */
@@ -1478,8 +1906,9 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				if (node.getSwitchDpid().equals(sw.getId())) {
 					groups = aggregate.peekOFGroups(node);
 					log.debug("Could be a race condition here... got groups={}, DPID={}", groups, sw.getId().toString());
+					log.debug("Found Node with matching DPID {} in Aggregate {}. Creating OFGroupAdd's for switch.", sw.getId().toString(), aggregate.getName());
+
 					for (OFGroup group : groups) {
-						log.debug("Found Node with matching DPID {} in Aggregate {}. Creating OFGroupAdd's for switch.", sw.getId().toString(), aggregate.getName());
 						OFFactory factory = sw.getOFFactory();
 						OFGroupAdd newGroup = factory.buildGroupAdd()
 								.setGroup(group)
@@ -1511,6 +1940,17 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		}
 	}
 
+	/**
+	 * The GENI Cinema network topology assumes a central root switch
+	 * serving as the bridge between the ingress Gateway(s) and the
+	 * egress Gateway(s). This switch actually acts like a hub and simply
+	 * rebroadcasts the video streams.
+	 * TODO need to insert flows here to reduce needless videos entering each
+	 * branch, which could be detrimental to performance given a large number
+	 * of IngressStreams with demand.
+	 * 
+	 * @param sw, the switch serving as as root switch.
+	 */
 	private void initializeRootSwitch(IOFSwitch sw) {
 		for (Aggregate aggregate : aggregates) {
 			ArrayList<Node> aggRootSwitches = aggregate.getRootSwitches();
@@ -1520,23 +1960,30 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 					OFFactory factory = sw.getOFFactory();
 					ArrayList<OFInstruction> instructions = new ArrayList<OFInstruction>(1);
 					ArrayList<OFAction> actions = new ArrayList<OFAction>(1);
-					actions.add(factory.actions().buildOutput()
-							.setMaxLen(0xffFFffFF)
-							.setPort(OFPort.FLOOD)
-							.build());
+					for (OFPort egressPort : node.getEgressPorts()) {
+						actions.add(factory.actions().buildOutput()
+								.setMaxLen(0xffFFffFF)
+								.setPort(egressPort)
+								.build());
+					}
 					instructions.add(factory.instructions().buildApplyActions()
 							.setActions(actions)
 							.build());
-					OFFlowAdd floodIP = factory.buildFlowAdd()
-							.setBufferId(OFBufferId.NO_BUFFER)
-							.setPriority(FlowModUtils.PRIORITY_LOW)
-							.setMatch(factory.buildMatch() // leave out input port to allow bidirectional flooding
-									.setExact(MatchField.ETH_TYPE, EthType.IPv4)
-									.build())
-									.setInstructions(instructions)
-									.setOutPort(OFPort.FLOOD)
-									.build();
-					sw.write(floodIP);
+
+					for (OFPort ingressPort : node.getIngressPorts()) {
+						OFFlowAdd floodIP = factory.buildFlowAdd()
+								.setBufferId(OFBufferId.NO_BUFFER)
+								.setPriority(FlowModUtils.PRIORITY_LOW)
+								.setMatch(factory.buildMatch()
+										.setExact(MatchField.IN_PORT, ingressPort)
+										.setExact(MatchField.ETH_TYPE, EthType.IPv4)
+										.setExact(MatchField.IP_PROTO, IpProtocol.UDP)
+										.build())
+										.setInstructions(instructions)
+										.setOutPort(OFPort.FLOOD)
+										.build();
+						sw.write(floodIP);
+					}
 				}
 			}
 		}
@@ -1546,6 +1993,10 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	 * For all switches in the GENI Cinema service, remove any
 	 * pre-existing UDP-match flows. These might conflict with
 	 * the new runtime configuration.
+	 * 
+	 * If the controller just connected to the switches though,
+	 * the default behavior of the controller's handshake handler
+	 * should be to clear the flow and group tables.
 	 * 
 	 * @param sw, The IOFSwitch to configure with our OFGroups.
 	 */
@@ -1584,7 +2035,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	}
 
 	private void insertNewChannelDropFlows(Channel newChannel) {
-		if (!newChannel.getDemand()) { // check just to be safe
+		if (!newChannel.getDemand()) { /* check just to be safe */
 			OFFactory factory = switchService.getSwitch(newChannel.getHostServer().getOVSNode().getSwitchDpid()).getOFFactory();
 			/*
 			 * Construct the Match for UDP source port of the Channel.
@@ -1626,7 +2077,6 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	 * @return
 	 */
 	private void insertEgressStreamFlows(EgressStream newStream, EgressStream oldStream) {
-
 		OFFactory factory;
 		ArrayList<OFAction> actionList;
 		ArrayList<OFInstruction> instructionList;
@@ -1740,7 +2190,14 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 
 		factory = switchService.getSwitch(newStream.getChannel().getSortNode(newStream.getId()).getSwitchDpid()).getOFFactory();
 
-		//TODO assume right now that the VLCS already sent with the correct MAC and IP for the GCGW
+		/*
+		 * FIXME Assume right now that the VLCS already sent the UDP stream with the correct dst MAC and IP for the egress GW.
+		 *
+		 * We will actually "cheat" and set all egress GWs with the same private IPs and MACs to cut our rewrite fields by 2/3.
+		 * If this is not the assumption, then this will need to be changed to also rewrite to the correct dst IP and MAC.
+		 * There should be a way to turn this part on and off without adding and removing the code, although arguably it should
+		 * never be turned on for efficiency's sake. (The topology *should* be set up with the spoofed IPs and MACs.)
+		 */
 		ArrayList<OFAction> bucketActions = new ArrayList<OFAction>(2);
 		bucketActions.add(factory.actions().setField(factory.oxms().udpDst(newStream.getVLCSSAtGateway().getIngress().getPort()))); 
 		bucketActions.add(factory.actions().output(newStream.getChannel().getSortNode(newStream.getId()).getEgressPort(), Integer.MAX_VALUE));
@@ -1749,7 +2206,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				.setActions(bucketActions)
 				.setWatchGroup(OFGroup.ANY) 	/* MUST EXPLICITLY SET OFGroup and OFPort as ANY, */
 				.setWatchPort(OFPort.ANY)   	/* even if OFGroupType=ALL --> watch doesn't even matter */
-				.build();						/* TODO possible bug in LOXI? */
+				.build();						
 
 		/*
 		 * Get the current list of Channel viewers/clients and add this client.
@@ -1803,7 +2260,6 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			/*
 			 * If there is no longer any demand for a particular Channel,
 			 * disable it at the Server-side OVS.
-			 * TODO should we also revoke the Channel's OFGroup?
 			 */
 			if (!oldStream.getChannel().getDemand()) {
 				factory = switchService.getSwitch(oldStream.getChannel().getHostServer().getOVSNode().getSwitchDpid()).getOFFactory();
@@ -1828,15 +2284,13 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				switchService.getSwitch(oldStream.getChannel().getHostServer().getOVSNode().getSwitchDpid()).write(disableFlow);
 
 				/*
-				 * Return the OFGroup to the pool.
+				 * Hold onto the OFGroup. If we accept a Channel into the service, we should
+				 * guarantee that Channel will always have an OFGroup. There's no sense in
+				 * returning the OFGroup to the pool until the Channel is officially done
+				 * (not just no demand).
 				 */
-				// TODO
-				//oldStream.getChannel().setGroup(OFGroup.ZERO); 
-				// this will force the Channel to ask for a new group next time, but it will not return it
-				// we need a way for each sort switch to maintain a list of OFgroups applicable to it and
-				// return the group to the list it was checked out from.
 			}
-			
+
 			/*
 			 * Now repeat for the specific host sort OVS Node
 			 */
@@ -1859,7 +2313,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 
 				switchService.getSwitch(oldSortNode.getSwitchDpid()).write(disableFlow);
 			}
-			
+
 			/*
 			 * After using a potentially empty bucket list for composing the bucket mod,
 			 * remove the Node from the Channel if it was this was the last client watching
@@ -1869,24 +2323,104 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		}
 	}
 
-	/**
-	 * Used by the StreamGarbageCollector to get a handle on the manager. This
-	 * isn't a true singleton, since the default constructor must be public for
-	 * the ModuleLoader to instantiate the GENICinemaManager module.
-	 * 
-	 * @return The pseudo-singleton instance of the manager.
-	 */
-	protected static GENICinemaManager getInstance() {
-		return instance;
-	}
+	private void removeEgressStreamFlows(EgressStream oldStream) {
 
-	/**
-	 * Every client has a time field of when it was last modified. If the client
-	 * has been dormant for X amount of time, return the client's resources to the
-	 * pool of available resources so that another client can connect and use them.
-	 * This is greedy and does not account for clients 
-	 */
-	protected synchronized void cleanUpOldClients() {
+		OFFactory factory;
 
+		/*
+		 * If the client was changing Channels, remove the old
+		 * bucket from the previous Channel.
+		 */
+		if (oldStream != null) {
+			/*
+			 * First, update the old Channel's bucket list by
+			 * removing the client's bucket. The demand and client
+			 * count for the Channel will be automatically updated
+			 * by the Channel.
+			 */
+			factory = switchService.getSwitch(oldStream.getChannel().getSortNode(oldStream.getId()).getSwitchDpid()).getOFFactory();
+
+			/*
+			 * Remember the sort Node. The new EgressStream's Channel's
+			 * Node will actually be the same, since a client's attachment point never
+			 * changes, but for clarity, we won't use the new EgressStream reference
+			 * anywhere below.
+			 */
+			Node oldSortNode = oldStream.getChannel().getSortNode(oldStream.getId());
+			oldStream.getChannel().removeClient(oldStream.getId());
+
+			OFGroupModify groupMod = factory.buildGroupModify()
+					.setGroup(oldStream.getChannel().getGroup())
+					.setGroupType(OFGroupType.ALL)
+					.setBuckets(oldStream.getChannel().getBucketList(oldSortNode))
+					.build();
+
+			log.debug("Writing OFGroupMod to remove client {}'s OFBucket from OFGroup {}", 
+					oldStream.getChannel().getId(), oldStream.getChannel().getGroup().getGroupNumber() + " : " + groupMod.toString());
+
+			switchService.getSwitch(oldSortNode.getSwitchDpid()).write(groupMod);
+
+			/*
+			 * If there is no longer any demand for a particular Channel,
+			 * disable it at the Server-side OVS.
+			 */
+			if (!oldStream.getChannel().getDemand()) {
+				factory = switchService.getSwitch(oldStream.getChannel().getHostServer().getOVSNode().getSwitchDpid()).getOFFactory();
+				/*
+				 * Construct the Match for UDP source port of the Channel.
+				 * Build the OFFlowDelete with the Match and List<OFInstruction> (from above).
+				 */
+				OFFlowModify disableFlow = factory.buildFlowModify()
+						.setMatch(
+								factory.buildMatch()
+								.setExact(MatchField.ETH_TYPE, EthType.IPv4)
+								.setExact(MatchField.IP_PROTO, oldStream.getChannel().getHostVLCStreamServer().getEgress().getProtocol())
+								.setExact(MatchField.UDP_DST, oldStream.getChannel().getHostVLCStreamServer().getEgress().getPort())
+								.setExact(MatchField.IN_PORT, oldStream.getChannel().getHostServer().getOVSNode().getIngressPort())
+								.build())
+								.setBufferId(OFBufferId.NO_BUFFER)
+								.build(); /* Do not set any actions --> DROP */
+
+				log.debug("Writing OFFlowModify to disable/drop Channel {} on UDP port {} out of the VLCS: " + disableFlow.toString(),
+						oldStream.getChannel().getId(), oldStream.getChannel().getHostVLCStreamServer().getEgress().getPort().toString());
+
+				switchService.getSwitch(oldStream.getChannel().getHostServer().getOVSNode().getSwitchDpid()).write(disableFlow);
+
+				/*
+				 * For same reason as when switching Channels, let's hold onto the OFGroup
+				 * until the Channel is explicitly removed. This guarantees QoS for the Channel.
+				 */
+			}
+
+			/*
+			 * Now repeat for the specific host sort OVS Node
+			 */
+			if (!oldStream.getChannel().getDemand(oldSortNode)) {
+				factory = switchService.getSwitch(oldSortNode.getSwitchDpid()).getOFFactory();
+
+				OFFlowModify disableFlow = factory.buildFlowModify()
+						.setMatch(
+								factory.buildMatch()
+								.setExact(MatchField.ETH_TYPE, EthType.IPv4)
+								.setExact(MatchField.IP_PROTO, oldStream.getChannel().getHostVLCStreamServer().getEgress().getProtocol())
+								.setExact(MatchField.UDP_DST, oldStream.getChannel().getHostVLCStreamServer().getEgress().getPort())
+								.setExact(MatchField.IN_PORT, oldSortNode.getIngressPort())
+								.build())
+								.setBufferId(OFBufferId.NO_BUFFER)
+								.build(); /* Do not set any actions --> DROP */
+
+				log.debug("Writing OFFlowModify to disable/drop Channel {} on UDP dst port {} out of the sort OVS Node: " + disableFlow.toString(),
+						oldStream.getChannel().getId(), oldStream.getChannel().getHostVLCStreamServer().getEgress().getPort().toString());
+
+				switchService.getSwitch(oldSortNode.getSwitchDpid()).write(disableFlow);
+			}
+
+			/*
+			 * After using a potentially empty bucket list for composing the bucket mod,
+			 * remove the Node from the Channel if it was this was the last client watching
+			 * on that particular sort Node.
+			 */
+			oldStream.getChannel().removeSortNodeIfHasNoClients(oldSortNode);
+		}
 	}
 }

@@ -4,7 +4,6 @@ import java.util.Map;
 
 import net.floodlightcontroller.genicinema.IGENICinemaService;
 
-import org.restlet.data.Form;
 import org.restlet.engine.header.Header;
 import org.restlet.engine.header.HeaderConstants;
 import org.restlet.representation.Representation;
@@ -18,31 +17,7 @@ import org.slf4j.LoggerFactory;
 public class AddGENICinemaResource extends ServerResource {
 	protected static Logger log = LoggerFactory.getLogger(AddGENICinemaResource.class);
 
-	/**
-	 * Takes a GENI Cinema add-video-feed request in JSON format,
-	 * parses it, modifies the GENI Cinema configuration to support
-	 * the new video feed, and returns back to the sender information
-	 * needed to start streaming the video:
-	 * 
-	 * REQUEST STRING
-	 * "name" : "name-to-give-video"
-	 * "description" : "description-of-video-content"
-	 * "view-password" : "optional-password-to-view-video"
-	 * "admin-password" : "required-password-to-modify-video-later"
-	 * "my-ip" : "the-client-ip-address" //TODO won't be relevant if behind NAT...
-	 * "my-port" : "the-client-tp-port"
-	 * "my-protocol" : "the-tp-protocol-to-use"
-	 * 
-	 * RESPONSE STRING
-	 * "name" : "acked-name"
-	 * "gw-ip" : "the-gateway-ip-address"
-	 * "gw-port" : "the-gateway-tp-port"
-	 * "gw-protocol" : "the-tp-protocol-to-use"
-	 * "id" : "a-unique-identifier-representing-this-video"
-	 * 
-	 * @param fmJson The Static Flow Pusher entry in JSON format.
-	 * @return A string status message
-	 */
+	@SuppressWarnings({ "unchecked", "rawtypes" })
 	@Post
 	public Map<String, String> parseAddRequest(String json) {
 		Series<Header> responseHeaders = (Series<Header>) getResponse().getAttributes().get("org.restlet.http.headers"); 
@@ -52,7 +27,6 @@ public class AddGENICinemaResource extends ServerResource {
 	    	getResponse().getAttributes().put(HeaderConstants.ATTRIBUTE_HEADERS, responseHeaders);
 	    }
 	    responseHeaders.add(new Header("Access-Control-Allow-Origin", "http://myweb.clemson.edu")); 
-
 		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class.getCanonicalName())).addChannel(json, getRequest().getClientInfo());
 	}
 	

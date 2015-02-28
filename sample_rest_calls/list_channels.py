@@ -19,7 +19,7 @@ class GENICinemaTester(object):
         return ret[0] == 200
 
     def rest_call(self, data, action):
-        path = '/wm/geni-cinema/list/json'
+        path = '/wm/geni-cinema/list-channels/json'
         headers = {
             'Content-type': 'application/json',
             'Accept': 'application/json',
@@ -29,7 +29,7 @@ class GENICinemaTester(object):
         conn.request(action, path, body, headers)
         response = conn.getresponse()
         ret = (response.status, response.reason, response.read())
-        print ret
+        print json.dumps(response, sort_keys=True, indent=4, separators=(',', ': '))
         conn.close()
         return ret
 

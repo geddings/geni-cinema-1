@@ -19,7 +19,7 @@ class GENICinemaTester(object):
         return ret[0] == 200
 
     def rest_call(self, data, action):
-        path = '/wm/geni-cinema/view/json'
+        path = '/wm/geni-cinema/watch-channel/json'
         headers = {
             'Content-type': 'application/json',
             'Accept': 'application/json',

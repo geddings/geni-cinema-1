@@ -4,6 +4,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.OFGroup;
@@ -133,6 +134,15 @@ public class Aggregate {
 		} else {
 			return isNodeConnected.get(foundNode).booleanValue();
 		}
+	}
+	
+	public boolean allSwitchesConnected() {
+		for (Boolean connected : isNodeConnected.values()) {
+			if (connected.booleanValue() == false) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	public boolean switchConnected(DatapathId dpid) {
@@ -298,7 +308,7 @@ public class Aggregate {
 			this.b_ovsRoots = new ArrayList<Node>();
 			this.b_ovsVMs = new ArrayList<Node>();
 			this.b_vlcsVMs = new ArrayList<Server>();
-			this.b_availableOFGroupsPerSortNode = new HashMap<Node, ArrayDeque<OFGroup>>();
+			this.b_availableOFGroupsPerSortNode = new ConcurrentHashMap<Node, ArrayDeque<OFGroup>>();
 			this.b_isNodeConnected = new HashMap<Node, Boolean>();
 		}
 
@@ -310,7 +320,7 @@ public class Aggregate {
 			this.b_ovsRoots = new ArrayList<Node>(aggregate.ovsRoots);
 			this.b_ovsVMs = new ArrayList<Node>(aggregate.ovsVMs);
 			this.b_vlcsVMs = new ArrayList<Server>(aggregate.vlcsVMs);
-			this.b_availableOFGroupsPerSortNode = new HashMap<Node, ArrayDeque<OFGroup>>(aggregate.availableOFGroupsPerSortNode);
+			this.b_availableOFGroupsPerSortNode = new ConcurrentHashMap<Node, ArrayDeque<OFGroup>>(aggregate.availableOFGroupsPerSortNode);
 			this.b_isNodeConnected = new HashMap<Node, Boolean>(aggregate.isNodeConnected);
 		}
 

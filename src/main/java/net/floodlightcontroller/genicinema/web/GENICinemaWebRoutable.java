@@ -14,13 +14,13 @@ public class GENICinemaWebRoutable implements RestletRoutable {
     @Override
     public Restlet getRestlet(Context context) {
         Router router = new Router(context);
-        router.attach("/list/json", ListGENICinemaResource.class);
-        router.attach("/add/json", AddGENICinemaResource.class);
-        router.attach("/view/json", ViewGENICinemaResource.class);
-        router.attach("/remove/json", RemoveGENICinemaResource.class);
-        router.attach("/disconnect/json", DisconnectGENICinemaResource.class);
-        router.attach("/modify/json", ModifyGENICinemaResource.class);
-        router.attach("/keep-alive/json", KeepAliveGENICinemaResource.class);
+        router.attach("/list-gateways/json", GatewayInfoGENICinemaResource.class);
+        router.attach("/add-channel/json", AddGENICinemaResource.class);
+        router.attach("/modify-channel/json", ModifyGENICinemaResource.class);
+        router.attach("/remove-channel/json", RemoveGENICinemaResource.class);
+        router.attach("/list-channels/json", ListGENICinemaResource.class);
+        router.attach("/watch-channel/json", ViewGENICinemaResource.class);
+        router.attach("/remove-client/json", DisconnectGENICinemaResource.class);
         return router;
     }
 
