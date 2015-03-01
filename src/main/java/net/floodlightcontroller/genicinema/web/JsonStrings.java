@@ -7,8 +7,11 @@ public class JsonStrings {
 	 * Reusable strings for all message types.
 	 */
 	private static final String NAME = "name";
+	private static final String NAME_NEW = "new_name";
 	private static final String DESCRIPTION = "description";
+	private static final String DESCRIPTION_NEW = "new_description";
 	private static final String VIEW_PASSWORD = "view_password";
+	private static final String VIEW_PASSWORD_NEW = "new_view_password";
 	private static final String ADMIN_PASSWORD = "admin_password";
 	private static final String ADMIN_PASSWORD_NEW = "new_admin_password";
 	private static final String CHANNEL_ID = "channel_id";
@@ -195,23 +198,20 @@ public class JsonStrings {
 		public static class Request {
 			private Request() {};
 			public static final String channel_id = CHANNEL_ID;
-			public static final String name = NAME;
-			public static final String description = DESCRIPTION;
-			public static final String view_password = VIEW_PASSWORD;
+			public static final String new_name = NAME_NEW;
+			public static final String new_description = DESCRIPTION_NEW;
+			public static final String new_view_password = VIEW_PASSWORD_NEW;
 			public static final String admin_password = ADMIN_PASSWORD;
-			public static final String admin_password_new = ADMIN_PASSWORD_NEW;
+			public static final String new_admin_password = ADMIN_PASSWORD_NEW;
 		}
 
 		public static class Response {
 			private Response() {};
 			public static final String channel_id = Modify.Request.channel_id;
-			public static final String name = Modify.Request.name;
-			public static final String description = Modify.Request.description;
-			public static final String view_password = Modify.Request.view_password;
-			public static final String admin_password = Modify.Request.admin_password;
-			public static final String gateway_ip = GATEWAY_IP;
-			public static final String gateway_port = GATEWAY_PORT;
-			public static final String gateway_protocol = GATEWAY_PROTOCOL;
+			public static final String new_name = Modify.Request.new_name;
+			public static final String new_description = Modify.Request.new_description;
+			public static final String new_view_password = Modify.Request.new_view_password;
+			public static final String new_admin_password = Modify.Request.new_admin_password;
 		}
 	}
 

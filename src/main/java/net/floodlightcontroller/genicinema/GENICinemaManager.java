@@ -471,12 +471,10 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 
 		/*
 		 * For all aggregates, find the switch and set it as connected.
-		 * TODO I don't like how this works, but it'll do for now.
 		 * switchConnected(DatapathId) will set the switch as connected if
 		 * it exists in the Aggregate's configuration (lists of sort and 
 		 * enable switches). If the switch does not exist, no change will
-		 * be made. I think the aggregates should have a wrapper to search
-		 * for, fetch, and set certain things.
+		 * be made.
 		 */
 		for (Aggregate aggregate : aggregates) {
 			boolean result = aggregate.switchConnected(switchId);
@@ -514,9 +512,9 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		for (Aggregate aggregate : aggregates) {
 			boolean result = aggregate.switchDisconnected(switchId);
 			if (result) {
-				log.debug("Switch {} disconnected in Aggregate {}.", switchId.toString(), aggregate.getName());
+				log.debug("SWITCH {} DISCONNECTED IN AGGREGATE {}. This is not good. Is the control network okay?", switchId.toString(), aggregate.getName());
 			} else {
-				log.debug("Switch {} does not belong to Aggregate {}.", switchId.toString(), aggregate.getName());
+				log.debug("Switch {} disconnected, but does not belong to Aggregate {}.", switchId.toString(), aggregate.getName());
 			}
 		}
 	}
@@ -618,6 +616,17 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		String json_clientId = "";
 
 		Map<String, String> response = new HashMap<String, String>();
+		
+		/*
+		 * Verify the switches are connected to the controller.
+		 */
+		for (Aggregate aggregate : aggregates) {
+			if (!aggregate.allSwitchesConnected()) {
+				response.put(JsonStrings.Result.result_code, JsonStrings.Result.SwitchesNotReady.code);
+				response.put(JsonStrings.Result.result_message, JsonStrings.Result.SwitchesNotReady.message);
+				return response;
+			}
+		}
 
 		try {
 			jp = f.createJsonParser(json);
@@ -723,6 +732,17 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		ChannelBuilder cb = new ChannelBuilder();
 
 		Map<String, String> response = new HashMap<String, String>();
+		
+		/*
+		 * Verify the switches are connected to the controller.
+		 */
+		for (Aggregate aggregate : aggregates) {
+			if (!aggregate.allSwitchesConnected()) {
+				response.put(JsonStrings.Result.result_code, JsonStrings.Result.SwitchesNotReady.code);
+				response.put(JsonStrings.Result.result_message, JsonStrings.Result.SwitchesNotReady.message);
+				return response;
+			}
+		}
 
 		/* 
 		 * This will presumably get us the client IP of the most recent hop.
@@ -893,6 +913,17 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		String json_channelId = "";
 
 		Map<String, String> response = new HashMap<String, String>();
+		
+		/*
+		 * Verify the switches are connected to the controller.
+		 */
+		for (Aggregate aggregate : aggregates) {
+			if (!aggregate.allSwitchesConnected()) {
+				response.put(JsonStrings.Result.result_code, JsonStrings.Result.SwitchesNotReady.code);
+				response.put(JsonStrings.Result.result_message, JsonStrings.Result.SwitchesNotReady.message);
+				return response;
+			}
+		}
 
 		int reqFields = 0;
 		try {
@@ -1016,6 +1047,17 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		String json_viewPass = "";
 
 		Map<String, String> response = new HashMap<String, String>();
+		
+		/*
+		 * Verify the switches are connected to the controller.
+		 */
+		for (Aggregate aggregate : aggregates) {
+			if (!aggregate.allSwitchesConnected()) {
+				response.put(JsonStrings.Result.result_code, JsonStrings.Result.SwitchesNotReady.code);
+				response.put(JsonStrings.Result.result_message, JsonStrings.Result.SwitchesNotReady.message);
+				return response;
+			}
+		}
 
 		String clientIP;
 		if (clientInfo == null) {
@@ -1337,6 +1379,17 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		boolean gotNewViewPass = false;
 
 		Map<String, String> response = new HashMap<String, String>();
+		
+		/*
+		 * Verify the switches are connected to the controller.
+		 */
+		for (Aggregate aggregate : aggregates) {
+			if (!aggregate.allSwitchesConnected()) {
+				response.put(JsonStrings.Result.result_code, JsonStrings.Result.SwitchesNotReady.code);
+				response.put(JsonStrings.Result.result_message, JsonStrings.Result.SwitchesNotReady.message);
+				return response;
+			}
+		}
 
 		try {
 			jp = f.createJsonParser(json);
@@ -1361,19 +1414,19 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 					json_adminPass = jp.getText();
 					gotAdminPass = true;
 					break;
-				case JsonStrings.Modify.Request.admin_password_new:
+				case JsonStrings.Modify.Request.new_admin_password:
 					json_adminPassNew = jp.getText();
 					gotNewAdminPass = true;
 					break;
-				case JsonStrings.Modify.Request.view_password:
+				case JsonStrings.Modify.Request.new_view_password:
 					json_viewPass = jp.getText();
 					gotNewViewPass = true;
 					break;
-				case JsonStrings.Modify.Request.name:
+				case JsonStrings.Modify.Request.new_name:
 					json_name = jp.getText();
 					gotNewName = true;
 					break;
-				case JsonStrings.Modify.Request.description:
+				case JsonStrings.Modify.Request.new_description:
 					json_description = jp.getText();
 					gotNewDescription = true;
 					break;
@@ -1453,6 +1506,11 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			channel.resetName(json_name);
 		}
 
+		response.put(JsonStrings.Modify.Response.channel_id, String.valueOf(channel.getId()));
+		response.put(JsonStrings.Modify.Response.new_admin_password, channel.getAdminPassword());
+		response.put(JsonStrings.Modify.Response.new_description, channel.getDescription());
+		response.put(JsonStrings.Modify.Response.new_name, channel.getName());
+		response.put(JsonStrings.Modify.Response.new_view_password, channel.getViewPassword());
 		response.put(JsonStrings.Result.result_code, JsonStrings.Result.Complete.code);
 		response.put(JsonStrings.Result.result_message, JsonStrings.Result.Complete.message);
 		return response;
@@ -1588,6 +1646,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			newChannel.getHostVLCStreamServer().setInUse();
 			channelsPerAggregate.get(theAggregate.getName()).add(newChannel);
 			channelToIngressStreamBindings.put(newChannel, newIngressStream);
+			numAvailableVlcStreamsPerServer.put(newChannel.getHostServer(), numAvailableVlcStreamsPerServer.get(newChannel.getHostServer()).intValue() - 1);
 			return true;
 		}
 	}
@@ -1616,6 +1675,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			oldChannel.getHostVLCStreamServer().setNotInUse();
 			channelsPerAggregate.get(theAggregate.getName()).remove(oldChannel);
 			channelToIngressStreamBindings.remove(oldChannel);
+			numAvailableVlcStreamsPerServer.put(oldChannel.getHostServer(), numAvailableVlcStreamsPerServer.get(oldChannel.getHostServer()).intValue() + 1);
 			return true;
 		} else {
 			/* 
