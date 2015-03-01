@@ -646,7 +646,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 					log.error("Got unmatched JSON string in Watch-Channel input: {} : {}", n, jp.getText());
 				}
 			}
-		} catch (IOException e) {
+		} catch (IOException | NullPointerException e) { /* a malformed POST might have no string at all */
 			log.error(e.getMessage());
 		}
 
@@ -784,7 +784,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 					log.error("Got unmatched JSON string in Add-Channel input: {} : {}", n, jp.getText());
 				}
 			}
-		} catch (IOException e) {
+		} catch (IOException | NullPointerException e) { /* a malformed POST might have no string at all */
 			log.error(e.getMessage());
 		}
 
@@ -926,7 +926,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 					log.error("Got unmatched JSON string in Remove-Channel input: {} : {}", n, jp.getText());
 				}
 			}
-		} catch (IOException e) {
+		} catch (IOException | NullPointerException e) { /* a malformed POST might have no string at all */
 			log.error(e.getMessage());
 		}
 
@@ -1066,7 +1066,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 					log.error("Got unmatched JSON string in Watch-Channel input: {} : {}", n, jp.getText());
 				}
 			}
-		} catch (IOException e) {
+		} catch (IOException | NullPointerException e) { /* a malformed POST might have no string at all */
 			log.error(e.getMessage());
 		}
 
@@ -1385,7 +1385,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 					log.error("Got unmatched JSON string in Remove-Channel input: {} : {}", n, jp.getText());
 				}
 			}
-		} catch (IOException e) {
+		} catch (IOException | NullPointerException e) { /* a malformed POST might have no string at all */
 			log.error(e.getMessage());
 		}
 
