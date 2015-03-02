@@ -695,7 +695,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			 * This is essentially the same as a Channel switch, but the new Channel
 			 * is never added.
 			 */
-			log.debug("Removing all flows from Channel {} upon Client {} disconnect", existingStream.getChannel().getId(), existingStream.getId());
+			log.debug("Removing all client flows from Channel {} upon Client {} disconnect", existingStream.getChannel().getId(), existingStream.getId());
 			removeEgressStreamFlows(existingStream);
 
 			//TODO this is messy, but lookup the EgressGateway given the client's VLCStreamServer
@@ -1251,10 +1251,10 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			 * If there is not a sort node assigned, allocate one. This is merely here for debug purposes.
 			 */
 			if (!channel.sortNodeExists(assignedNode)) {
-				log.debug("Client {} triggered adding new sort Node {} on this Channel.", requestedChannelAsInt, assignedNode.getSwitchDpid().toString());
+				log.debug("Client {} triggered adding new sort Node {} on this Channel.", requestedClientAsInt, assignedNode.getSwitchDpid().toString());
 				channel.addClient(requestedClientAsInt, assignedNode);
 			} else {
-				log.debug("Client {} added to existing sort Node {} on this Channel.", requestedChannelAsInt, assignedNode.getSwitchDpid().toString());
+				log.debug("Client {} added to existing sort Node {} on this Channel.", requestedClientAsInt, assignedNode.getSwitchDpid().toString());
 				channel.addClient(requestedClientAsInt, assignedNode);
 			}
 
@@ -1322,11 +1322,11 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 			 * present in the new Channel selected, assign it to the new Channel. This is merely here for debug purposes.
 			 */
 			if (!channel.sortNodeExists(existingStream.getChannel().getSortNode(existingStream.getId()))) {
-				log.debug("Client {} triggered adding new sort Node {} on this Channel.", requestedChannelAsInt, 
+				log.debug("Client {} triggered adding new sort Node {} on this Channel.", requestedClientAsInt, 
 						existingStream.getChannel().getSortNode(existingStream.getId()).getSwitchDpid().toString());
 				channel.addClient(requestedClientAsInt, existingStream.getChannel().getSortNode(existingStream.getId()));
 			} else {
-				log.debug("Client {} added to existing sort Node {} on this Channel.", requestedChannelAsInt, 
+				log.debug("Client {} added to existing sort Node {} on this Channel.", requestedClientAsInt, 
 						existingStream.getChannel().getSortNode(existingStream.getId()).getSwitchDpid().toString());
 				channel.addClient(requestedClientAsInt, existingStream.getChannel().getSortNode(existingStream.getId()));
 			}
@@ -1726,7 +1726,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		if (!egressStreamsPerAggregate.containsKey(theAggregate.getName())) {
 			return false;
-		} else if (egressStreamsPerAggregate.get(theAggregate.getName()).contains(oldEgressStream)) {
+		} else if (!egressStreamsPerAggregate.get(theAggregate.getName()).contains(oldEgressStream)) {
 			return false;
 		} else {
 			/*
@@ -1853,7 +1853,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * (1) determine the quickest/best/closest route to an ingress GW?
 		 * (2) balance between the closest ingress GW and the most lightly-loaded?
 		 */
-
+		
 		return lightestGW;
 	}
 

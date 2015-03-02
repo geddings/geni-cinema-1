@@ -28,6 +28,8 @@ import org.restlet.Context;
 import org.restlet.Request;
 import org.restlet.Response;
 import org.restlet.Restlet;
+import org.restlet.Server;
+import org.restlet.data.Parameter;
 import org.restlet.data.Protocol;
 import org.restlet.data.Reference;
 import org.restlet.data.Status;
@@ -37,6 +39,7 @@ import org.restlet.routing.Filter;
 import org.restlet.routing.Router;
 import org.restlet.routing.Template;
 import org.restlet.service.StatusService;
+import org.restlet.util.Series;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -121,11 +124,22 @@ public class RestApiServer
             // Start listening for REST requests
             try {
                 final Component component = new Component();
+                Server server;
                 if (restHost == null) {
                 	component.getServers().add(Protocol.HTTP, restPort);
+                	//server = component.getServers().add(Protocol.HTTPS, restPort + 1);
                 } else {
                 	component.getServers().add(Protocol.HTTP, restHost, restPort);
+                	//server = component.getServers().add(Protocol.HTTPS, restHost, restPort + 1);
                 }
+                
+                /*Series<Parameter> parameters = server.getContext().getParameters();
+                parameters.add("sslContextFactory", "org.restlet.jsslutils.DefaultSslContextFactory");
+                parameters.add("keyStorePath", "130.127.38.2.jks");
+                parameters.add("keyStorePassword", "password");
+                parameters.add("keyPassword", "password");
+                parameters.add("keyStoreType", "JKS");
+                */
                 component.getClients().add(Protocol.CLAP);
                 component.getDefaultHost().attach(this);
                 component.start();
