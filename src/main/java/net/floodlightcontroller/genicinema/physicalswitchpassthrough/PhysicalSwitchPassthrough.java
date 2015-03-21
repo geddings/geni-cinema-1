@@ -81,20 +81,28 @@ public class PhysicalSwitchPassthrough implements IFloodlightModule, IOFSwitchLi
 
 		/* Add in our physical switches... should probably use a config file eventually */
 		physicalSwitches = new ArrayList<DatapathId>(14);
-		physicalSwitches.add(DatapathId.of("0e:9f:84:34:97:d5:62:00")); //1
-		physicalSwitches.add(DatapathId.of("0e:8f:84:34:97:c6:c9:00")); //2
-		physicalSwitches.add(DatapathId.of("0d:de:6c:3b:e5:6c:c5:00")); //3
-		physicalSwitches.add(DatapathId.of("0d:c9:6c:3b:e5:66:6b:00")); //4
-		physicalSwitches.add(DatapathId.of("06:68:6c:3b:e5:63:21:00")); //5
-		physicalSwitches.add(DatapathId.of("06:0f:84:34:97:d4:6c:00")); //6
-		physicalSwitches.add(DatapathId.of("04:9f:84:34:97:d5:c5:00")); //7
-		physicalSwitches.add(DatapathId.of("02:91:84:34:97:d6:0d:00")); //8
-		physicalSwitches.add(DatapathId.of("01:04:84:34:97:d5:62:00")); //9
-		physicalSwitches.add(DatapathId.of("01:04:6c:3b:e5:66:6b:00")); //10
-		physicalSwitches.add(DatapathId.of("01:03:6c:3b:e5:63:21:00")); //11
-		physicalSwitches.add(DatapathId.of("01:02:84:34:97:d6:0d:00")); //12
-		physicalSwitches.add(DatapathId.of("01:02:84:34:97:d4:6c:00")); //13
-		physicalSwitches.add(DatapathId.of("01:02:6c:3b:e5:6c:c5:00")); //14	
+		physicalSwitches.add(DatapathId.of("01:02:6c:3b:e5:6c:c5:00")); //1
+		physicalSwitches.add(DatapathId.of("01:02:84:34:97:d4:6c:00")); //2
+		physicalSwitches.add(DatapathId.of("01:02:84:34:97:d6:0d:00")); //3
+		physicalSwitches.add(DatapathId.of("01:03:6c:3b:e5:63:21:00")); //4
+		physicalSwitches.add(DatapathId.of("01:04:6c:3b:e5:66:6b:00")); //5
+		physicalSwitches.add(DatapathId.of("01:04:84:34:97:d5:62:00")); //6
+		physicalSwitches.add(DatapathId.of("02:91:84:34:97:d6:0d:00")); //7
+		physicalSwitches.add(DatapathId.of("04:9f:84:34:97:d5:c5:00")); //8
+		physicalSwitches.add(DatapathId.of("06:0f:84:34:97:d4:6c:00")); //9
+		physicalSwitches.add(DatapathId.of("06:68:6c:3b:e5:63:21:00")); //10
+		physicalSwitches.add(DatapathId.of("06:c3:2c:59:e5:23:42:00")); //11
+		physicalSwitches.add(DatapathId.of("06:c4:2c:59:e5:23:42:00")); //12
+		physicalSwitches.add(DatapathId.of("06:c6:2c:59:e5:23:42:00")); //13
+		physicalSwitches.add(DatapathId.of("06:c8:2c:59:e5:23:42:00")); //14	
+		physicalSwitches.add(DatapathId.of("06:cb:2c:59:e5:23:42:00")); //15
+		physicalSwitches.add(DatapathId.of("06:cd:2c:59:e5:23:42:00")); //16
+		physicalSwitches.add(DatapathId.of("06:ce:2c:59:e5:23:42:00")); //17
+		physicalSwitches.add(DatapathId.of("06:d0:2c:59:e5:23:42:00")); //18
+		physicalSwitches.add(DatapathId.of("0d:c9:6c:3b:e5:66:6b:00")); //19
+		physicalSwitches.add(DatapathId.of("0d:de:6c:3b:e5:6c:c5:00")); //20
+		physicalSwitches.add(DatapathId.of("0e:8f:84:34:97:c6:c9:00")); //21
+		physicalSwitches.add(DatapathId.of("0e:9f:84:34:97:d5:62:00")); //22
 	}
 
 	@Override
