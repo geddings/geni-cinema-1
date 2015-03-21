@@ -446,7 +446,7 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 					.build();
 			this.sw.write(deleteFlows);
 		}
-		
+
 		/*
 		 * Only for OF1.3+, insert the default forward-to-controller flow for
 		 * each table. This is priority=0 with no Match.
@@ -845,7 +845,20 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 
 		@Override
 		void processOFError(OFErrorMsg m) {
-			logErrorDisconnect(m);
+			/*
+			 * HP ProCurve switches do not support
+			 * the ofpt_barrier_request message.
+			 * 
+			 * Look for an error from a bad ofpt_barrier_request,
+			 * log a warning, but proceed.
+			 */
+			if (m.getErrType() == OFErrorType.BAD_REQUEST &&
+					((OFBadRequestErrorMsg) m).getCode() == OFBadRequestCode.BAD_TYPE &&
+					((OFBadRequestErrorMsg) m).getData().getParsedMessage().get() instanceof OFBarrierRequest) {
+				log.warn("Switch does not support Barrier Request messages. Could be an HP ProCurve.");
+			} else {
+				logErrorDisconnect(m);
+			}
 		}
 
 		@Override
