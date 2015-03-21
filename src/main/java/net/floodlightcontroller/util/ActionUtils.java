@@ -359,7 +359,7 @@ public class ActionUtils {
 			recommendation=LogMessageDoc.REPORT_CONTROLLER_BUG)
 	public static void fromString(OFFlowMod.Builder fmb, String bigString, Logger log) {
 		List<OFAction> actions = new LinkedList<OFAction>();
-		if (bigString != null) {
+		if (bigString != null && !bigString.trim().isEmpty()) {
 			bigString = bigString.toLowerCase();
 			String[] bigStringSplit = bigString.split(","); // split into separate action=value or action=key@value pairs
 
@@ -868,10 +868,12 @@ public class ActionUtils {
 					actions.add(a);
 				}
 			}
+			log.debug("action {}", actions);
+			fmb.setActions(actions);
+		} else {
+			log.debug("actions not found --> drop");
 		}
-		log.debug("action {}", actions);
-
-		fmb.setActions(actions);
+		
 		return;
 	} 
 

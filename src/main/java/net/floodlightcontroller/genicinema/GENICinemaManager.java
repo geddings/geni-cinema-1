@@ -179,7 +179,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		Gateway ingress_gw = new Gateway.GatewayBuilder()
 		.setPrivateIP(IPv4Address.of("10.10.0.1"))
-		.setPublicIP(IPv4Address.of("130.127.215.170"))
+		.setPublicIP(IPv4Address.of("198.248.240.225"))
 		.build();
 		igws.add(ingress_gw);
 
@@ -233,12 +233,13 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		Node root_ovs = new Node.NodeBuilder()
 		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:11:11"))
-		.addIngressPort(OFPort.of(1)) 
+		.addIngressPort(OFPort.of(6)) 
 		//.addIngressPort(OFPort.of(2))
 		.addEgressPort(OFPort.of(3))
 		.addEgressPort(OFPort.of(4))
 		.addEgressPort(OFPort.of(5))
-		.addEgressPort(OFPort.of(6))
+		.addEgressPort(OFPort.of(2))
+		.addEgressPort(OFPort.of(1))
 		.addEgressPort(OFPort.of(7))
 		.build();
 
@@ -248,8 +249,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		ArrayList<Node> ovss = new ArrayList<Node>(5);
 		Node ovs_switch = new Node.NodeBuilder()
 		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:11"))
-		.addIngressPort(OFPort.of(1))
-		.addEgressPort(OFPort.of(2))
+		.addIngressPort(OFPort.of(2))
+		.addEgressPort(OFPort.of(1))
 		.build();
 		ovss.add(ovs_switch);
 		/*
@@ -258,7 +259,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		ArrayList<Gateway> egws = new ArrayList<Gateway>(5);
 		Gateway egress_gw = new Gateway.GatewayBuilder()
 		.setPrivateIP(IPv4Address.of("10.10.0.2"))
-		.setPublicIP(IPv4Address.of("130.127.88.1"))
+		.setPublicIP(IPv4Address.of("198.248.240.221"))
 		.build();
 		egws.add(egress_gw);
 		vlcStreamsPerEgressGateway.put(egress_gw, new ArrayList<VLCStreamServer>());
@@ -278,7 +279,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		egress_gw = new Gateway.GatewayBuilder()
 		.setPrivateIP(IPv4Address.of("10.10.0.2"))
-		.setPublicIP(IPv4Address.of("130.127.88.2"))
+		.setPublicIP(IPv4Address.of("198.248.240.222"))
 		.build();
 		egws.add(egress_gw);
 		vlcStreamsPerEgressGateway.put(egress_gw, new ArrayList<VLCStreamServer>());
@@ -289,8 +290,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		ovs_switch = new Node.NodeBuilder()
 		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:33"))
-		.addIngressPort(OFPort.of(1))
-		.addEgressPort(OFPort.of(2))
+		.addIngressPort(OFPort.of(2))
+		.addEgressPort(OFPort.of(1))
 		.build();
 		ovss.add(ovs_switch);
 		/*
@@ -298,7 +299,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		egress_gw = new Gateway.GatewayBuilder()
 		.setPrivateIP(IPv4Address.of("10.10.0.2"))
-		.setPublicIP(IPv4Address.of("130.127.88.3"))
+		.setPublicIP(IPv4Address.of("198.248.240.223"))
 		.build();
 		egws.add(egress_gw);
 		vlcStreamsPerEgressGateway.put(egress_gw, new ArrayList<VLCStreamServer>());
@@ -318,7 +319,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		egress_gw = new Gateway.GatewayBuilder()
 		.setPrivateIP(IPv4Address.of("10.10.0.2"))
-		.setPublicIP(IPv4Address.of("130.127.88.4"))
+		.setPublicIP(IPv4Address.of("198.248.240.224"))
 		.build();
 		egws.add(egress_gw);
 		vlcStreamsPerEgressGateway.put(egress_gw, new ArrayList<VLCStreamServer>());
@@ -387,7 +388,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				.setEgress(privSock);
 				vlcStreamsPerServer.get(s).add(vlcssb.build());
 			}
-			tcpPort += 100;
+			tcpPort += 100; /* TODO this doens't matter does it? We can have the same set of ingress ports on different IPs... */
 			udpPort += 100;
 			numAvailableVlcStreamsPerServer.put(s, allowedSockets);
 		}
@@ -2124,6 +2125,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 							.setExact(MatchField.UDP_DST, newChannel.getHostVLCStreamServer().getEgress().getPort())
 							.setExact(MatchField.IN_PORT, newChannel.getHostServer().getOVSNode().getIngressPort())
 							.build())
+							.setPriority(FlowModUtils.PRIORITY_MAX)
 							.setBufferId(OFBufferId.NO_BUFFER)
 							.build(); /* Do not set any actions --> DROP */
 
@@ -2351,6 +2353,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 								.setExact(MatchField.IN_PORT, oldStream.getChannel().getHostServer().getOVSNode().getIngressPort())
 								.build())
 								.setBufferId(OFBufferId.NO_BUFFER)
+								.setPriority(FlowModUtils.PRIORITY_MAX)
 								.build(); /* Do not set any actions --> DROP */
 
 				log.debug("Writing OFFlowModify to disable/drop Channel {} on UDP port {} out of the VLCS: " + disableFlow.toString(),
@@ -2381,6 +2384,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 								.setExact(MatchField.IN_PORT, oldSortNode.getIngressPort())
 								.build())
 								.setBufferId(OFBufferId.NO_BUFFER)
+								.setPriority(FlowModUtils.PRIORITY_MAX)
 								.build(); /* Do not set any actions --> DROP */
 
 				log.debug("Writing OFFlowModify to disable/drop Channel {} on UDP dst port {} out of the sort OVS Node: " + disableFlow.toString(),

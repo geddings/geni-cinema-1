@@ -422,6 +422,10 @@ implements IOFSwitchListener, IFloodlightModule, IStaticFlowEntryPusherService, 
 			} else {
 				log.warn("Skipping entry with bad data: {} :: {} ", e.getMessage(), e.getStackTrace());
 			}
+		} catch (NullPointerException e) {
+			if (fmb == null) {
+				log.error("Could not find switch DPID {} in the ISwitchService. Skipping entry with bad data.", switchName);
+			}
 		}
 
 		String match = matchString.toString();
@@ -429,7 +433,8 @@ implements IOFSwitchListener, IFloodlightModule, IStaticFlowEntryPusherService, 
 		try {
 			fmb.setMatch(MatchUtils.fromString(match, fmb.getVersion()));
 		} catch (IllegalArgumentException e) {
-			log.debug("Ignoring flow entry {} on switch {} with illegal OFMatch() key: " + match, entryName, switchName);
+			log.error(e.toString());
+			log.error("Ignoring flow entry {} on switch {} with illegal OFMatch() key: " + match, entryName, switchName);
 			return;
 		}
 //sanjivini		

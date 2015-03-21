@@ -2,7 +2,7 @@ package net.floodlightcontroller.genicinema.web;
 
 public class JsonStrings {
 	private JsonStrings() {}; // prevent instantiation for this and all inner classes
-	
+	 
 	/*
 	 * Reusable strings for all message types.
 	 */
@@ -19,7 +19,7 @@ public class JsonStrings {
 	private static final String GATEWAY_IP = "gateway_ip";
 	private static final String GATEWAY_PORT = "gateway_port";
 	private static final String GATEWAY_PROTOCOL = "gateway_protocol";
-	private static final String RESULT = "result";
+	private static final String RESULT = "code";
 	private static final String RESULT_MESSAGE = "message";
 	private static final String INGRESS_GWS = "ingress_gateways";
 	private static final String EGRESS_GWS = "egress_gateways";
@@ -125,7 +125,7 @@ public class JsonStrings {
 	
 	public static class Add {
 		private Add() {};
-		
+
 		public static class Request {
 			private Request() {};
 			public static final String name = NAME;
