@@ -270,8 +270,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		ovs_switch = new Node.NodeBuilder()
 		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:22"))
-		.addIngressPort(OFPort.of(1))
-		.addEgressPort(OFPort.of(2))
+		.addIngressPort(OFPort.of(3))
+		.addEgressPort(OFPort.of(1))
 		.build();
 		ovss.add(ovs_switch);
 		/*
@@ -279,7 +279,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		egress_gw = new Gateway.GatewayBuilder()
 		.setPrivateIP(IPv4Address.of("10.10.0.2"))
-		.setPublicIP(IPv4Address.of("198.248.240.222"))
+		.setPublicIP(IPv4Address.of("143.215.218.23"))
 		.build();
 		egws.add(egress_gw);
 		vlcStreamsPerEgressGateway.put(egress_gw, new ArrayList<VLCStreamServer>());
@@ -290,7 +290,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		ovs_switch = new Node.NodeBuilder()
 		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:33"))
-		.addIngressPort(OFPort.of(2))
+		.addIngressPort(OFPort.of(3))
 		.addEgressPort(OFPort.of(1))
 		.build();
 		ovss.add(ovs_switch);
@@ -299,7 +299,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		egress_gw = new Gateway.GatewayBuilder()
 		.setPrivateIP(IPv4Address.of("10.10.0.2"))
-		.setPublicIP(IPv4Address.of("198.248.240.223"))
+		.setPublicIP(IPv4Address.of("204.102.244.20"))
 		.build();
 		egws.add(egress_gw);
 		vlcStreamsPerEgressGateway.put(egress_gw, new ArrayList<VLCStreamServer>());
@@ -307,43 +307,63 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 
 		/*
 		 * Switch 4
-		 */
+		 *
 		ovs_switch = new Node.NodeBuilder()
 		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:44"))
-		.addIngressPort(OFPort.of(1))
-		.addEgressPort(OFPort.of(2))
+		.addIngressPort(OFPort.of(3))
+		.addEgressPort(OFPort.of(1))
 		.build();
 		ovss.add(ovs_switch);
 		/*
 		 * Egress GW 4
-		 */
+		 *
 		egress_gw = new Gateway.GatewayBuilder()
 		.setPrivateIP(IPv4Address.of("10.10.0.2"))
 		.setPublicIP(IPv4Address.of("198.248.240.224"))
 		.build();
 		egws.add(egress_gw);
 		vlcStreamsPerEgressGateway.put(egress_gw, new ArrayList<VLCStreamServer>());
-		switchToEgressGatewayBindings.put(ovs_switch, egress_gw);
+		switchToEgressGatewayBindings.put(ovs_switch, egress_gw); */
 
 		/*
 		 * Switch 5
-		 *
+		 */
 		ovs_switch = new Node.NodeBuilder()
 		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:55"))
-		.addIngressPort(OFPort.of(1))
-		.addEgressPort(OFPort.of(2))
+		.addIngressPort(OFPort.of(3))
+		.addEgressPort(OFPort.of(1))
 		.build();
 		ovss.add(ovs_switch);
 		/*
 		 * Egress GW 5
-		 *
+		 */
 		egress_gw = new Gateway.GatewayBuilder()
 		.setPrivateIP(IPv4Address.of("10.10.0.2"))
-		.setPublicIP(IPv4Address.of("130.127.88.5"))
+		.setPublicIP(IPv4Address.of("192.171.20.85"))
 		.build();
 		egws.add(egress_gw);
 		vlcStreamsPerEgressGateway.put(egress_gw, new ArrayList<VLCStreamServer>());
-		switchToEgressGatewayBindings.put(ovs_switch, egress_gw); */
+		switchToEgressGatewayBindings.put(ovs_switch, egress_gw); 
+		
+		/*
+		 * Switch 6
+		 */
+		ovs_switch = new Node.NodeBuilder()
+		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:55"))
+		.addIngressPort(OFPort.of(3))
+		.addEgressPort(OFPort.of(1))
+		.build();
+		ovss.add(ovs_switch);
+		/*
+		 * Egress GW 6
+		 */
+		egress_gw = new Gateway.GatewayBuilder()
+		.setPrivateIP(IPv4Address.of("10.10.0.2"))
+		.setPublicIP(IPv4Address.of("171.67.2.23"))
+		.build();
+		egws.add(egress_gw);
+		vlcStreamsPerEgressGateway.put(egress_gw, new ArrayList<VLCStreamServer>());
+		switchToEgressGatewayBindings.put(ovs_switch, egress_gw);  
 
 		Aggregate clemson = new Aggregate.AggregateBuilder()
 		.addServers(servers)
