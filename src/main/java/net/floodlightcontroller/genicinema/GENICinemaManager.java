@@ -179,7 +179,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		Gateway ingress_gw = new Gateway.GatewayBuilder()
 		.setPrivateIP(IPv4Address.of("10.10.0.1"))
-		.setPublicIP(IPv4Address.of("198.248.240.225"))
+		.setPublicIP(IPv4Address.of("192.1.242.141"))
 		.build();
 		igws.add(ingress_gw);
 
@@ -233,14 +233,14 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		Node root_ovs = new Node.NodeBuilder()
 		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:11:11"))
-		.addIngressPort(OFPort.of(6)) 
+		.addIngressPort(OFPort.of(5)) 
 		//.addIngressPort(OFPort.of(2))
-		.addEgressPort(OFPort.of(3))
+		.addEgressPort(OFPort.of(8))
 		.addEgressPort(OFPort.of(4))
-		.addEgressPort(OFPort.of(5))
-		.addEgressPort(OFPort.of(2))
+		.addEgressPort(OFPort.of(3))
 		.addEgressPort(OFPort.of(1))
-		.addEgressPort(OFPort.of(7))
+		.addEgressPort(OFPort.of(2))
+		.addEgressPort(OFPort.of(6))
 		.build();
 
 		/*
@@ -249,7 +249,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		ArrayList<Node> ovss = new ArrayList<Node>(5);
 		Node ovs_switch = new Node.NodeBuilder()
 		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:11"))
-		.addIngressPort(OFPort.of(2))
+		.addIngressPort(OFPort.of(3))
 		.addEgressPort(OFPort.of(1))
 		.build();
 		ovss.add(ovs_switch);
@@ -259,7 +259,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		ArrayList<Gateway> egws = new ArrayList<Gateway>(5);
 		Gateway egress_gw = new Gateway.GatewayBuilder()
 		.setPrivateIP(IPv4Address.of("10.10.0.2"))
-		.setPublicIP(IPv4Address.of("198.248.240.221"))
+		.setPublicIP(IPv4Address.of("165.230.161.204"))
 		.build();
 		egws.add(egress_gw);
 		vlcStreamsPerEgressGateway.put(egress_gw, new ArrayList<VLCStreamServer>());
