@@ -233,14 +233,14 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 */
 		Node root_ovs = new Node.NodeBuilder()
 		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:11:11"))
-		.addIngressPort(OFPort.of(5)) 
+		.addIngressPort(OFPort.of(13)) 
 		//.addIngressPort(OFPort.of(2))
-		.addEgressPort(OFPort.of(8))
-		.addEgressPort(OFPort.of(4))
-		.addEgressPort(OFPort.of(3))
-		.addEgressPort(OFPort.of(1))
-		.addEgressPort(OFPort.of(2))
-		.addEgressPort(OFPort.of(6))
+		.addEgressPort(OFPort.of(16))
+		.addEgressPort(OFPort.of(12))
+		.addEgressPort(OFPort.of(11))
+		.addEgressPort(OFPort.of(9))
+		.addEgressPort(OFPort.of(10))
+		.addEgressPort(OFPort.of(14))
 		.build();
 
 		/*
@@ -249,7 +249,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		ArrayList<Node> ovss = new ArrayList<Node>(5);
 		Node ovs_switch = new Node.NodeBuilder()
 		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:11"))
-		.addIngressPort(OFPort.of(3))
+		.addIngressPort(OFPort.of(4))
 		.addEgressPort(OFPort.of(1))
 		.build();
 		ovss.add(ovs_switch);
