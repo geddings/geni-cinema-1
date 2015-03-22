@@ -189,7 +189,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		Node server_ovs = new Node.NodeBuilder()
 		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:00:11")) 
 		.addIngressPort(OFPort.LOCAL)
-		.addEgressPort(OFPort.of(1)) // should be correct now
+		.addEgressPort(OFPort.of(2)) // should be correct now
 		.build();
 		Server server = new Server.ServerBuilder()
 		.setPrivateIP(ingress_gw.getPrivateIP()) // for initial test, server will use public IP as ingress GW
