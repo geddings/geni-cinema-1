@@ -236,11 +236,11 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:11:11"))
 		.addIngressPort(OFPort.of(13)) 
 		//.addIngressPort(OFPort.of(2))
-		.addEgressPort(OFPort.of(16))
-		.addEgressPort(OFPort.of(12))
-		.addEgressPort(OFPort.of(11))
-		.addEgressPort(OFPort.of(9))
-		.addEgressPort(OFPort.of(10))
+		//.addEgressPort(OFPort.of(16))
+		//.addEgressPort(OFPort.of(12))
+		//.addEgressPort(OFPort.of(11))
+		//.addEgressPort(OFPort.of(9))
+		//.addEgressPort(OFPort.of(10))
 		.addEgressPort(OFPort.of(14))
 		.build();
 
