@@ -34,6 +34,7 @@ import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.EthType;
 import org.projectfloodlight.openflow.types.IPv4Address;
 import org.projectfloodlight.openflow.types.IpProtocol;
+import org.projectfloodlight.openflow.types.MacAddress;
 import org.projectfloodlight.openflow.types.OFBufferId;
 import org.projectfloodlight.openflow.types.OFGroup;
 import org.projectfloodlight.openflow.types.OFPort;
@@ -2050,6 +2051,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	private void initializeRootSwitch(IOFSwitch sw) {
 		for (Aggregate aggregate : aggregates) {
 			ArrayList<Node> aggRootSwitches = aggregate.getRootSwitches();
+			MacAddress mac = MacAddress.of("00:11:22:33:44:50");
 			for (Node node : aggRootSwitches) {
 				if (node.getSwitchDpid().equals(sw.getId())) {
 					log.debug("Found Root Tree Node with matching DPID {} in Aggregate {}. Adding FLOOD flows for switch.", sw.getId().toString(), aggregate.getName());
@@ -2057,6 +2059,8 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 					ArrayList<OFInstruction> instructions = new ArrayList<OFInstruction>(1);
 					ArrayList<OFAction> actions = new ArrayList<OFAction>(1);
 					for (OFPort egressPort : node.getEgressPorts()) {
+						actions.add(factory.actions().buildSetField().setField(factory.oxms().ethSrc(mac)).build());
+						mac = MacAddress.of(mac.getLong() + 1);
 						actions.add(factory.actions().buildOutput()
 								.setMaxLen(0xffFFffFF)
 								.setPort(egressPort)
