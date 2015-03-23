@@ -349,7 +349,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * Switch 6
 		 */
 		ovs_switch = new Node.NodeBuilder()
-		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:55"))
+		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:66"))
 		.addIngressPort(OFPort.of(3))
 		.addEgressPort(OFPort.of(1))
 		.build();
