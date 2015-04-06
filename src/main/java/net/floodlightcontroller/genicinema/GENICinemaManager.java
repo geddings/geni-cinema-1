@@ -39,6 +39,7 @@ import org.projectfloodlight.openflow.types.OFBufferId;
 import org.projectfloodlight.openflow.types.OFGroup;
 import org.projectfloodlight.openflow.types.OFPort;
 import org.projectfloodlight.openflow.types.TransportPort;
+import org.projectfloodlight.openflow.types.U16;
 import org.restlet.data.ClientInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -171,7 +172,6 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		/*
 		 * Set up the topology. TODO We should have a way to define this in an XML file or something...
 		 */
-
 		ArrayList<Gateway> igws = new ArrayList<Gateway>(2);
 		ArrayList<Server> servers = new ArrayList<Server>(2);
 
@@ -244,10 +244,12 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		.addEgressPort(OFPort.of(14))
 		.build();
 
+		ArrayList<Node> ovss = new ArrayList<Node>(5);
+		ArrayList<Gateway> egws = new ArrayList<Gateway>(5);
+
 		/*
 		 * Switch 1
-		 */
-		ArrayList<Node> ovss = new ArrayList<Node>(5);
+		 *
 		Node ovs_switch = new Node.NodeBuilder()
 		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:11"))
 		.addIngressPort(OFPort.of(4))
@@ -256,8 +258,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		ovss.add(ovs_switch);
 		/*
 		 * Egress GW 1
-		 */
-		ArrayList<Gateway> egws = new ArrayList<Gateway>(5);
+		 *
 		Gateway egress_gw = new Gateway.GatewayBuilder()
 		.setPrivateIP(IPv4Address.of("10.10.0.2"))
 		.setPublicIP(IPv4Address.of("165.230.161.204"))
@@ -266,10 +267,10 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		vlcStreamsPerEgressGateway.put(egress_gw, new ArrayList<VLCStreamServer>());
 		switchToEgressGatewayBindings.put(ovs_switch, egress_gw);
 
-		/*
+		*
 		 * Switch 2
 		 */
-		ovs_switch = new Node.NodeBuilder()
+		Node ovs_switch = new Node.NodeBuilder()
 		.setSwitchDpid(DatapathId.of("00:00:00:00:00:00:22:22"))
 		.addIngressPort(OFPort.of(3))
 		.addEgressPort(OFPort.of(1))
@@ -278,7 +279,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		/*
 		 * Egress GW 2
 		 */
-		egress_gw = new Gateway.GatewayBuilder()
+		Gateway egress_gw = new Gateway.GatewayBuilder()
 		.setPrivateIP(IPv4Address.of("10.10.0.2"))
 		.setPublicIP(IPv4Address.of("143.215.218.23"))
 		.build();
