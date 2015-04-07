@@ -28,7 +28,7 @@ public class VLCStreamServer {
 	}
 	
 	public void setNotInUse() {
-		this.isAvailable = false;
+		this.isAvailable = true;
 	}
 	
 	public VLCStreamServerBuilder createBuilder() {
