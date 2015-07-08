@@ -103,7 +103,7 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 	private OFFactory factory = OFFactories.getFactory(OFVersion.OF_14);
 	private final OFFeaturesReply featuresReply;
 	private final Timer timer;
-	
+
 	private volatile OFControllerRole initialRole = null;
 
 	private final ArrayList<OFPortStatus> pendingPortStatusMsg;
@@ -475,11 +475,13 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 	}
 
 	/** 
-	 * Adds an initial table-miss flow to each
-	 * and every table on the switch. This replaces the default behavior of
-	 * forwarding table-miss packets to the controller. The table-miss flows
-	 * inserted will forward all packets that do not match a flow to the 
-	 * controller for processing.
+	 * Adds an initial table-miss flow to tables on the switch. 
+	 * This replaces the default behavior of forwarding table-miss packets 
+	 * to the controller. The table-miss flows inserted will forward all 
+	 * packets that do not match a flow to the controller for processing.
+	 * 
+	 * The OFSwitchManager is checked for used-defined behavior and default
+	 * max table to try to use.
 	 * 
 	 * Adding the default flow only applies to OpenFlow 1.3+ switches, which 
 	 * remove the default forward-to-controller behavior of flow tables.
@@ -498,17 +500,22 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 					.setOutPort(OFPort.CONTROLLER)
 					.build();
 			this.sw.write(deleteFlow);
-						
+
 			ArrayList<OFAction> actions = new ArrayList<OFAction>(1);
 			actions.add(factory.actions().output(OFPort.CONTROLLER, 0xffFFffFF));
 			ArrayList<OFMessage> flows = new ArrayList<OFMessage>();
-			for (int tableId = 0; tableId < this.sw.getTables(); tableId++) {
-				OFFlowAdd defaultFlow = this.factory.buildFlowAdd()
-						.setTableId(TableId.of(tableId))
-						.setPriority(0)
-						.setActions(actions)
-						.build();
-				flows.add(defaultFlow);
+			/* Use <, not <=, since we want to allow for zero table miss flows */
+			for (int tableId = 0; tableId < this.sw.getMaxTableForTableMissFlow().getValue(); tableId++) {
+				/* Only add the flow if the table exists and if it supports sending to the controller */
+				TableFeatures tf = this.sw.getTableFeatures(TableId.of(tableId));
+				if (tf != null /* TODO && tf.supportsSendingToController() -- we need something like this, but how? */) {
+					OFFlowAdd defaultFlow = this.factory.buildFlowAdd()
+							.setTableId(TableId.of(tableId))
+							.setPriority(0)
+							.setActions(actions)
+							.build();
+					flows.add(defaultFlow);
+				}
 			}
 			this.sw.write(flows);
 		}
@@ -766,7 +773,7 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 					switchManager.notifyPortChanged(sw, ev.port, ev.type);
 			}
 		}
-		
+
 		/**
 		 * Handle a table features message.
 		 *
@@ -1014,7 +1021,6 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 			OFDescStatsReply descStatsReply = (OFDescStatsReply) m;
 			SwitchDescription description = new SwitchDescription(descStatsReply);
 			sw = switchManager.getOFSwitchInstance(mainConnection, description, factory, featuresReply.getDatapathId());
-			switchManager.switchAdded(sw);
 			// set switch information
 			// set features reply and channel first so we a DPID and
 			// channel info.
@@ -1022,6 +1028,11 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 			if (portDescStats != null) {
 				sw.setPortDescStats(portDescStats);
 			}
+			/*
+			 * Need to add after setting the features.
+			 */
+			switchManager.switchAdded(sw);
+
 
 			// Handle pending messages now that we have a sw object
 			handlePendingPortStatusMessages(description);
@@ -1042,7 +1053,7 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 			sendHandshakeDescriptionStatsRequest();
 		}
 	}
-	
+
 	/*
 	 * New state: WaitSwitchTableFeaturesReplyState
 	 */
@@ -1053,7 +1064,7 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 			super(false);
 			replies = new ArrayList<OFTableFeaturesStatsReply>();
 		}
-		
+
 		@Override
 		/**
 		 * Accumulate a list of the OFTableFeaturesStatsReply's until there 
@@ -1076,23 +1087,23 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 				/* should only receive TABLE_FEATURES here */
 				log.error("Received {} message but expected TABLE_FEATURES.", m.getStatsType().toString());
 			}
-		
+
 		}
-		
+
 		@Override
 		void processOFError(OFErrorMsg m) {
 			if ((m.getErrType() == OFErrorType.BAD_REQUEST) &&
 					((((OFBadRequestErrorMsg)m).getCode() == OFBadRequestCode.MULTIPART_BUFFER_OVERFLOW)
-					|| ((OFBadRequestErrorMsg)m).getCode() == OFBadRequestCode.BAD_STAT)) { 
+							|| ((OFBadRequestErrorMsg)m).getCode() == OFBadRequestCode.BAD_STAT)) { 
 				log.warn("Switch {} is {} but does not support OFTableFeaturesStats. Assuming all tables can perform any match, action, and instruction in the spec.", 
 						sw.getId().toString(), sw.getOFFactory().getVersion().toString());
 			} else {
 				log.error("Received unexpected OFErrorMsg {} on switch {}.", m.toString(), sw.getId().toString());
 			}
 			nextState();
-			
+
 		}
-		
+
 		private void nextState() {
 			/* move on to the next state */
 			sw.startDriverHandshake();
@@ -1102,7 +1113,7 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 				setState(new WaitSwitchDriverSubHandshakeState());
 			}
 		}
-		
+
 		@Override
 		void enterState() {
 			if (sw.getOFFactory().getVersion().compareTo(OFVersion.OF_13) < 0) {
@@ -1111,7 +1122,7 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 				sendHandshakeTableFeaturesRequest();
 			}
 		}
-		
+
 	}
 
 	public class WaitSwitchDriverSubHandshakeState extends OFSwitchHandshakeState {
@@ -1439,7 +1450,7 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 		void processOFFlowRemoved(OFFlowRemoved m) {
 			dispatchMessage(m);
 		}
-		
+
 		@Override
 		void processOFStatsReply(OFStatsReply m) {
 			// TODO Auto-generated method stub
@@ -1762,7 +1773,7 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 				.build();
 		mainConnection.write(descStatsRequest);
 	}
-	
+
 	/**
 	 * send a table features request
 	 */
