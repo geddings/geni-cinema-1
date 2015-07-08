@@ -4,7 +4,7 @@ import java.util.Map;
 
 import net.floodlightcontroller.genicinema.IGENICinemaService;
 
-import org.restlet.engine.header.Header;
+import org.restlet.data.Header;
 import org.restlet.engine.header.HeaderConstants;
 import org.restlet.representation.Representation;
 import org.restlet.resource.Options;
@@ -39,12 +39,13 @@ public class ViewGENICinemaResource extends ServerResource {
 	 * @param fmJson The Static Flow Pusher entry in JSON format.
 	 * @return A string status message
 	 */
+	@SuppressWarnings("unchecked")
 	@Post
 	public Map<String, String> parseViewRequest(String json) {
 		Series<Header> responseHeaders = (Series<Header>) getResponse().getAttributes().get("org.restlet.http.headers"); 
 	    getResponse().getAttributes().get(HeaderConstants.ATTRIBUTE_HEADERS);
 	    if (responseHeaders == null) {
-	    	responseHeaders = new Series(Header.class);
+	    	responseHeaders = new Series<Header>(Header.class);
 	    	getResponse().getAttributes().put(HeaderConstants.ATTRIBUTE_HEADERS, responseHeaders);
 	    }
 	    responseHeaders.add(new Header("Access-Control-Allow-Origin", "http://myweb.clemson.edu"));
@@ -52,12 +53,13 @@ public class ViewGENICinemaResource extends ServerResource {
 		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class.getCanonicalName())).watchChannel(json, getRequest().getClientInfo());
 	}
 	
+	@SuppressWarnings("unchecked")
 	@Options
 	public void doOptions(Representation entity) {
 	    Series<Header> responseHeaders = (Series<Header>) getResponse().getAttributes().get("org.restlet.http.headers"); 
 	    getResponse().getAttributes().get(HeaderConstants.ATTRIBUTE_HEADERS);
 	    if (responseHeaders == null) {
-	    	responseHeaders = new Series(Header.class);
+	    	responseHeaders = new Series<Header>(Header.class);
 	    	getResponse().getAttributes().put(HeaderConstants.ATTRIBUTE_HEADERS, responseHeaders);
 	    }
 	    responseHeaders.add(new Header("Access-Control-Allow-Origin", "http://myweb.clemson.edu")); 

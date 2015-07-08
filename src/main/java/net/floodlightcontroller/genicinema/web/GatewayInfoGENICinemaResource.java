@@ -5,7 +5,7 @@ import java.util.Map;
 
 import net.floodlightcontroller.genicinema.IGENICinemaService;
 
-import org.restlet.engine.header.Header;
+import org.restlet.data.Header;
 import org.restlet.engine.header.HeaderConstants;
 import org.restlet.representation.Representation;
 import org.restlet.resource.Get;
@@ -18,12 +18,13 @@ import org.slf4j.LoggerFactory;
 public class GatewayInfoGENICinemaResource extends ServerResource {
 	protected static Logger log = LoggerFactory.getLogger(GatewayInfoGENICinemaResource.class);
 
+	@SuppressWarnings("unchecked")
 	@Get
 	public Map<String, ArrayList<String>> getChannels() {
 		Series<Header> responseHeaders = (Series<Header>) getResponse().getAttributes().get("org.restlet.http.headers"); 
 	    getResponse().getAttributes().get(HeaderConstants.ATTRIBUTE_HEADERS);
 	    if (responseHeaders == null) {
-	    	responseHeaders = new Series(Header.class);
+	    	responseHeaders = new Series<Header>(Header.class);
 	    	getResponse().getAttributes().put(HeaderConstants.ATTRIBUTE_HEADERS, responseHeaders);
 	    }
 	    
@@ -31,12 +32,13 @@ public class GatewayInfoGENICinemaResource extends ServerResource {
 		return ((IGENICinemaService) getContext().getAttributes().get(IGENICinemaService.class.getCanonicalName())).getGatewayInfo();
 	}
 	
+	@SuppressWarnings("unchecked")
 	@Options
 	public void doOptions(Representation entity) {
 	    Series<Header> responseHeaders = (Series<Header>) getResponse().getAttributes().get("org.restlet.http.headers"); 
 	    getResponse().getAttributes().get(HeaderConstants.ATTRIBUTE_HEADERS);
 	    if (responseHeaders == null) {
-	    	responseHeaders = new Series(Header.class);
+	    	responseHeaders = new Series<Header>(Header.class);
 	    	getResponse().getAttributes().put(HeaderConstants.ATTRIBUTE_HEADERS, responseHeaders);
 	    }
 	    responseHeaders.add(new Header("Access-Control-Allow-Origin", "http://myweb.clemson.edu")); 

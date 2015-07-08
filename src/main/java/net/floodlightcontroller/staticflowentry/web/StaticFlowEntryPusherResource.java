@@ -65,7 +65,7 @@ public class StaticFlowEntryPusherResource extends ServerResource {
 		int eth_type = -1;
 		int nw_protocol = -1;
 		int icmp_type = -1;
-
+		
 		//Determine the dl_type if set
 		if (rows.containsKey(StaticFlowEntryPusher.COLUMN_DL_TYPE)) {
 			if (((String) rows.get(StaticFlowEntryPusher.COLUMN_DL_TYPE)).startsWith("0x")) {
@@ -124,7 +124,7 @@ public class StaticFlowEntryPusherResource extends ServerResource {
 		if (rows.containsKey(StaticFlowEntryPusher.COLUMN_ICMP6_TYPE)) {
 			icmp6_type = true;
 			ip6 = true;
-			if (((String) rows.get(StaticFlowEntryPusher.COLUMN_ICMP_TYPE)).startsWith("0x")) {
+			if (((String) rows.get(StaticFlowEntryPusher.COLUMN_ICMP6_TYPE)).startsWith("0x")) {
 				icmp_type = Integer.parseInt(((String) rows.get(StaticFlowEntryPusher.COLUMN_ICMP6_TYPE)).replaceFirst("0x", ""), 16);
 			} else {
 				icmp_type = Integer.parseInt((String) rows.get(StaticFlowEntryPusher.COLUMN_ICMP6_TYPE));
@@ -326,7 +326,7 @@ public class StaticFlowEntryPusherResource extends ServerResource {
 			return ("{\"status\" : \"" + status + "\"}");
 		} catch (IOException e) {
 			log.error("Error parsing push flow mod request: " + fmJson, e);
-			return "{\"status\" : \"Error! Could not parse flod mod, see log for details.\"}";
+			return "{\"status\" : \"Error! Could not parse flow mod, see log for details.\"}";
 		}        
 	}
 

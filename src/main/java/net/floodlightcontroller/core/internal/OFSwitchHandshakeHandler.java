@@ -39,10 +39,13 @@ import org.projectfloodlight.openflow.protocol.OFFactory;
 import org.projectfloodlight.openflow.protocol.OFFeaturesReply;
 import org.projectfloodlight.openflow.protocol.OFFlowAdd;
 import org.projectfloodlight.openflow.protocol.OFFlowDelete;
+import org.projectfloodlight.openflow.protocol.OFFlowDeleteStrict;
 import org.projectfloodlight.openflow.protocol.OFFlowModFailedCode;
 import org.projectfloodlight.openflow.protocol.OFFlowRemoved;
 import org.projectfloodlight.openflow.protocol.OFGetConfigReply;
 import org.projectfloodlight.openflow.protocol.OFGetConfigRequest;
+import org.projectfloodlight.openflow.protocol.OFGroupDelete;
+import org.projectfloodlight.openflow.protocol.OFGroupType;
 import org.projectfloodlight.openflow.protocol.OFMessage;
 import org.projectfloodlight.openflow.protocol.OFNiciraControllerRole;
 import org.projectfloodlight.openflow.protocol.OFNiciraControllerRoleReply;
@@ -55,8 +58,11 @@ import org.projectfloodlight.openflow.protocol.OFRoleReply;
 import org.projectfloodlight.openflow.protocol.OFRoleRequest;
 import org.projectfloodlight.openflow.protocol.OFSetConfig;
 import org.projectfloodlight.openflow.protocol.OFStatsReply;
+import org.projectfloodlight.openflow.protocol.OFStatsReplyFlags;
 import org.projectfloodlight.openflow.protocol.OFStatsRequestFlags;
 import org.projectfloodlight.openflow.protocol.OFStatsType;
+import org.projectfloodlight.openflow.protocol.OFTableFeaturesStatsReply;
+import org.projectfloodlight.openflow.protocol.OFTableFeaturesStatsRequest;
 import org.projectfloodlight.openflow.protocol.OFType;
 import org.projectfloodlight.openflow.protocol.OFVersion;
 import org.projectfloodlight.openflow.protocol.action.OFAction;
@@ -64,6 +70,7 @@ import org.projectfloodlight.openflow.protocol.errormsg.OFBadRequestErrorMsg;
 import org.projectfloodlight.openflow.protocol.errormsg.OFFlowModFailedErrorMsg;
 import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.OFAuxId;
+import org.projectfloodlight.openflow.types.OFGroup;
 import org.projectfloodlight.openflow.types.OFPort;
 import org.projectfloodlight.openflow.types.TableId;
 import org.projectfloodlight.openflow.types.U64;
@@ -92,10 +99,12 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 	private final Map<OFAuxId, IOFConnectionBackend> auxConnections;
 	private volatile OFSwitchHandshakeState state;
 	private RoleChanger roleChanger;
-	// Default to 1.3 - This is overwritten by the features reply
-	private OFFactory factory = OFFactories.getFactory(OFVersion.OF_13);
+	// Default to 1.4 - This is overwritten by the features reply
+	private OFFactory factory = OFFactories.getFactory(OFVersion.OF_14);
 	private final OFFeaturesReply featuresReply;
 	private final Timer timer;
+	
+	private volatile OFControllerRole initialRole = null;
 
 	private final ArrayList<OFPortStatus> pendingPortStatusMsg;
 
@@ -169,16 +178,16 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 		 * Send Nicira role request message to the switch requesting the
 		 * specified role.
 		 *
-		 * @param role role to request
+		 * @param role, role to request
+		 * @param xid, if greater than 0, the XID to use in the request
 		 */
-		private long sendNiciraRoleRequest(OFControllerRole role){
+		private long sendNiciraRoleRequest(OFControllerRole role, long xid){
 
-			long xid;
 			// Construct the role request message
 			if(factory.getVersion().compareTo(OFVersion.OF_12) < 0) {
 				OFNiciraControllerRoleRequest.Builder builder =
 						factory.buildNiciraControllerRoleRequest();
-				xid = factory.nextXid();
+				xid = xid <= 0 ? factory.nextXid() : xid;
 				builder.setXid(xid);
 
 				OFNiciraControllerRole niciraRole = NiciraRoleUtils.ofRoleToNiciraRole(role);
@@ -192,6 +201,7 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 						// we don't use the generation id scheme for now,
 						// switch initializes to 0, we keep it at 0
 						.setGenerationId(U64.of(0))
+						.setXid(xid <= 0 ? factory.nextXid() : xid)
 						.setRole(role)
 						.build();
 				xid = roleRequest.getXid();
@@ -213,7 +223,7 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 								"from switch, likely due to switch connected to another " +
 								"controller also in master mode",
 								recommendation=LogMessageDoc.CHECK_SWITCH)
-		synchronized void sendRoleRequestIfNotPending(OFControllerRole role)
+		synchronized void sendRoleRequestIfNotPending(OFControllerRole role, long xid)
 				throws IOException {
 			long now = System.nanoTime();
 			if (now - lastAssertTimeNs < assertTimeIntervalNs) {
@@ -229,7 +239,7 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 						role, sw);
 			}
 			if (!requestPending)
-				sendRoleRequest(role);
+				sendRoleRequest(role, xid);
 			else
 				switchManagerCounters.roleNotResentBecauseRolePending.increment();
 		}
@@ -243,7 +253,7 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 		 * @param role
 		 * @throws IOException
 		 */
-		synchronized void sendRoleRequest(OFControllerRole role) throws IOException {
+		synchronized void sendRoleRequest(OFControllerRole role, long xid) throws IOException {
 			/*
 			 * There are three cases to consider for SUPPORTS_NX_ROLE:
 			 *
@@ -260,7 +270,7 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 			if ((supportsNxRole != null) && !supportsNxRole) {
 				setSwitchRole(role, RoleRecvStatus.UNSUPPORTED);
 			} else {
-				pendingXid = sendNiciraRoleRequest(role);
+				pendingXid = sendNiciraRoleRequest(role, xid);
 				pendingRole = role;
 				this.roleSubmitTimeNs = System.nanoTime();
 				requestPending = true;
@@ -283,6 +293,7 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 		 * @throws SwitchStateException if no request is pending
 		 */
 		synchronized void deliverRoleReply(long xid, OFControllerRole role) {
+			log.debug("DELIVERING ROLE REPLY {}", role.toString());
 			if (!requestPending) {
 				// Maybe don't disconnect if the role reply we received is
 				// for the same role we are already in.
@@ -423,7 +434,48 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 	}
 
 	/**
-	 * Removes all present flows and adds an initial table-miss flow to each
+	 * Removes all present flows 
+	 */
+	private void clearAllTables() {
+		/*
+		 * No tables for OF1.0, so omit that field for flow deletion.
+		 */
+		if (this.sw.getOFFactory().getVersion().compareTo(OFVersion.OF_10) == 0) {
+			OFFlowDelete deleteFlows = this.factory.buildFlowDelete()
+					.build();
+			this.sw.write(deleteFlows);
+		} else { /* All other OFVersions support multiple tables and groups. */
+			OFFlowDelete deleteFlows = this.factory.buildFlowDelete()
+					.setTableId(TableId.ALL)
+					.build();
+			this.sw.write(deleteFlows);
+
+			/*
+			 * Clear all groups.
+			 * We have to do this for all types manually as of Loxi 0.9.0.
+			 */
+			OFGroupDelete delgroup = this.sw.getOFFactory().buildGroupDelete()
+					.setGroup(OFGroup.ALL)
+					.setGroupType(OFGroupType.ALL)
+					.build();
+			this.sw.write(delgroup);
+			delgroup.createBuilder()
+			.setGroupType(OFGroupType.FF)
+			.build();
+			this.sw.write(delgroup);
+			delgroup.createBuilder()
+			.setGroupType(OFGroupType.INDIRECT)
+			.build();
+			this.sw.write(delgroup);
+			delgroup.createBuilder()
+			.setGroupType(OFGroupType.SELECT)
+			.build();
+			this.sw.write(delgroup);
+		}
+	}
+
+	/** 
+	 * Adds an initial table-miss flow to each
 	 * and every table on the switch. This replaces the default behavior of
 	 * forwarding table-miss packets to the controller. The table-miss flows
 	 * inserted will forward all packets that do not match a flow to the 
@@ -432,26 +484,21 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 	 * Adding the default flow only applies to OpenFlow 1.3+ switches, which 
 	 * remove the default forward-to-controller behavior of flow tables.
 	 */
-	private void clearAndSetDefaultFlows() {
-		/*
-		 * No tables for OF1.0, so omit that field for flow deletion.
-		 */
-		if (this.sw.getOFFactory().getVersion().compareTo(OFVersion.OF_10) == 0) {
-			OFFlowDelete deleteFlows = this.factory.buildFlowDelete()
-					.build();
-			this.sw.write(deleteFlows);
-		} else { /* All other OFVersions support multiple tables. */
-			OFFlowDelete deleteFlows = this.factory.buildFlowDelete()
-					.setTableId(TableId.ALL)
-					.build();
-			this.sw.write(deleteFlows);
-		}
-
+	private void addDefaultFlows() {
 		/*
 		 * Only for OF1.3+, insert the default forward-to-controller flow for
 		 * each table. This is priority=0 with no Match.
 		 */
 		if (this.sw.getOFFactory().getVersion().compareTo(OFVersion.OF_13) >= 0) {
+			/*
+			 * Remove the default flow if it's present.
+			 */
+			OFFlowDeleteStrict deleteFlow = this.factory.buildFlowDeleteStrict()
+					.setTableId(TableId.ALL)
+					.setOutPort(OFPort.CONTROLLER)
+					.build();
+			this.sw.write(deleteFlow);
+						
 			ArrayList<OFAction> actions = new ArrayList<OFAction>(1);
 			actions.add(factory.actions().output(OFPort.CONTROLLER, 0xffFFffFF));
 			ArrayList<OFMessage> flows = new ArrayList<OFMessage>();
@@ -534,6 +581,14 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 
 		void processOFRoleReply(OFRoleReply m) {
 			unhandledMessageReceived(m);
+		}
+
+		void processOFRoleRequest(OFRoleRequest m) {
+			unhandledMessageWritten(m);
+		}
+
+		void processOFNiciraControllerRoleRequest(OFNiciraControllerRoleRequest m) {
+			unhandledMessageWritten(m);
 		}
 
 		private final boolean handshakeComplete;
@@ -624,6 +679,21 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 		}
 
 		/**
+		 * We have an OFMessage we didn't expect given the current state and
+		 * we want to ignore the message
+		 * @param h the channel handler that wrote the message
+		 * @param m the message
+		 */
+		protected void unhandledMessageWritten(OFMessage m) {
+			switchManagerCounters.unhandledMessage.increment();
+			if (log.isDebugEnabled()) {
+				String msg = getSwitchStateMessage(m,
+						"Ignoring unexpected written message");
+				log.debug(msg);
+			}
+		}
+
+		/**
 		 * Log an OpenFlow error message from a switch
 		 * @param error The error message
 		 */
@@ -696,6 +766,28 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 					switchManager.notifyPortChanged(sw, ev.port, ev.type);
 			}
 		}
+		
+		/**
+		 * Handle a table features message.
+		 *
+		 * Handle a table features message by updating the tables in the
+		 * IOFSwitch instance and notifying Controller about the change so
+		 * it can dispatch a switch update.
+		 *
+		 * @param h The OFChannelHandler that received the message
+		 * @param m The OFTableFeatures message we received
+		 * @param doNotify if true switch table changed events will be
+		 * dispatched
+		 */
+		protected void handleTableFeaturesMessage(List<OFTableFeaturesStatsReply> replies, boolean doNotify) {
+			if (sw == null) {
+				String msg = getSwitchStateMessage(!replies.isEmpty() ? replies.get(0) : null, "State machine error: switch is null. Should never happen");
+				throw new SwitchStateException(msg);
+			}
+			sw.processOFTableFeatures(replies);
+			//TODO like port status, might want to create an event and dispatch it. Not sure how useful this would be though...
+		}
+
 
 		/**
 		 * Process an OF message received on the channel and
@@ -754,6 +846,23 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 				break;
 			}
 		}
+
+		void processWrittenOFMessage(OFMessage m) {
+			switch(m.getType()) {
+			case ROLE_REQUEST:
+				processOFRoleRequest((OFRoleRequest) m);
+				break;
+			case EXPERIMENTER:
+				if (m instanceof OFNiciraControllerRoleRequest) {
+					processOFNiciraControllerRoleRequest((OFNiciraControllerRoleRequest) m);
+				}
+				break;
+			default:
+				illegalMessageReceived(m);
+				break;
+			}
+		}
+
 	}
 
 	/**
@@ -859,7 +968,7 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 			} else {
 				logErrorDisconnect(m);
 			}
-		}
+		} 
 
 		@Override
 		void enterState() {
@@ -917,12 +1026,7 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 			// Handle pending messages now that we have a sw object
 			handlePendingPortStatusMessages(description);
 
-			sw.startDriverHandshake();
-			if (sw.isDriverHandshakeComplete()) {
-				setState(new WaitAppHandshakeState());
-			} else {
-				setState(new WaitSwitchDriverSubHandshakeState());
-			}
+			setState(new WaitTableFeaturesReplyState());
 		}
 
 		void handlePendingPortStatusMessages(SwitchDescription description){
@@ -937,6 +1041,77 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 		void enterState() {
 			sendHandshakeDescriptionStatsRequest();
 		}
+	}
+	
+	/*
+	 * New state: WaitSwitchTableFeaturesReplyState
+	 */
+	public class WaitTableFeaturesReplyState extends OFSwitchHandshakeState {
+
+		private ArrayList<OFTableFeaturesStatsReply> replies;
+		WaitTableFeaturesReplyState() {
+			super(false);
+			replies = new ArrayList<OFTableFeaturesStatsReply>();
+		}
+		
+		@Override
+		/**
+		 * Accumulate a list of the OFTableFeaturesStatsReply's until there 
+		 * are no more remaining. Then, pass the list to the switch for 
+		 * parsing and configuration.
+		 * 
+		 * The assumption is that the OFMessage dispatcher will call this each
+		 * time, which it does. We don't loop and receive here.
+		 * 
+		 * @param m, The potential OFTableFeaturesStatsReply message we want to include
+		 */
+		void processOFStatsReply(OFStatsReply m) {
+			if (m.getStatsType() == OFStatsType.TABLE_FEATURES) {
+				replies.add((OFTableFeaturesStatsReply) m);
+				if (!((OFTableFeaturesStatsReply)m).getFlags().contains(OFStatsReplyFlags.REPLY_MORE)) {
+					handleTableFeaturesMessage(replies, false);
+					nextState();
+				} 
+			} else {
+				/* should only receive TABLE_FEATURES here */
+				log.error("Received {} message but expected TABLE_FEATURES.", m.getStatsType().toString());
+			}
+		
+		}
+		
+		@Override
+		void processOFError(OFErrorMsg m) {
+			if ((m.getErrType() == OFErrorType.BAD_REQUEST) &&
+					((((OFBadRequestErrorMsg)m).getCode() == OFBadRequestCode.MULTIPART_BUFFER_OVERFLOW)
+					|| ((OFBadRequestErrorMsg)m).getCode() == OFBadRequestCode.BAD_STAT)) { 
+				log.warn("Switch {} is {} but does not support OFTableFeaturesStats. Assuming all tables can perform any match, action, and instruction in the spec.", 
+						sw.getId().toString(), sw.getOFFactory().getVersion().toString());
+			} else {
+				log.error("Received unexpected OFErrorMsg {} on switch {}.", m.toString(), sw.getId().toString());
+			}
+			nextState();
+			
+		}
+		
+		private void nextState() {
+			/* move on to the next state */
+			sw.startDriverHandshake();
+			if (sw.isDriverHandshakeComplete()) {
+				setState(new WaitAppHandshakeState());
+			} else {
+				setState(new WaitSwitchDriverSubHandshakeState());
+			}
+		}
+		
+		@Override
+		void enterState() {
+			if (sw.getOFFactory().getVersion().compareTo(OFVersion.OF_13) < 0) {
+				nextState();
+			} else {
+				sendHandshakeTableFeaturesRequest();
+			}
+		}
+		
 	}
 
 	public class WaitSwitchDriverSubHandshakeState extends OFSwitchHandshakeState {
@@ -1147,7 +1322,15 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 		@Override
 		void enterState() {
 			setSwitchStatus(SwitchStatus.MASTER);
-			clearAndSetDefaultFlows();
+			if (OFSwitchManager.clearTablesOnEachTransitionToMaster) {
+				log.info("Clearing flow tables of {} on recent transition to MASTER.", sw.getId().toString());
+				clearAllTables();
+			} else if (OFSwitchManager.clearTablesOnInitialConnectAsMaster && initialRole == null) { /* don't do it if we were slave first */
+				initialRole = OFControllerRole.ROLE_MASTER;
+				log.info("Clearing flow tables of {} on initial role as MASTER.", sw.getId().toString());
+				clearAllTables();
+			}
+			addDefaultFlows();
 		}
 
 		@LogMessageDoc(level="WARN",
@@ -1204,6 +1387,38 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 			}
 		}
 
+		@Override
+		void processOFRoleRequest(OFRoleRequest m) {
+			sendRoleRequest(m);
+		}
+
+		@Override
+		void processOFNiciraControllerRoleRequest(OFNiciraControllerRoleRequest m) {
+			OFControllerRole role;
+			switch (m.getRole()) {
+			case ROLE_MASTER:
+				role = OFControllerRole.ROLE_MASTER;
+				break;
+			case ROLE_SLAVE:
+				role = OFControllerRole.ROLE_SLAVE;
+				break;
+			case ROLE_OTHER:
+				role = OFControllerRole.ROLE_EQUAL;
+				break;
+			default:
+				log.error("Attempted to change to invalid Nicira role {}.", m.getRole().toString());
+				return;
+			}
+			/* 
+			 * This will get converted back to the correct factory of the switch later.
+			 * We will use OFRoleRequest though to simplify the API between OF versions.
+			 */
+			sendRoleRequest(OFFactories.getFactory(OFVersion.OF_13).buildRoleRequest()
+					.setGenerationId(U64.ZERO)
+					.setXid(m.getXid())
+					.setRole(role)
+					.build());
+		}
 
 		@Override
 		void processOFRoleReply(OFRoleReply m) {
@@ -1224,6 +1439,12 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 		void processOFFlowRemoved(OFFlowRemoved m) {
 			dispatchMessage(m);
 		}
+		
+		@Override
+		void processOFStatsReply(OFStatsReply m) {
+			// TODO Auto-generated method stub
+			super.processOFStatsReply(m);
+		}
 	}
 
 	/**
@@ -1243,6 +1464,9 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 		@Override
 		void enterState() {
 			setSwitchStatus(SwitchStatus.SLAVE);
+			if (initialRole == null) {
+				initialRole = OFControllerRole.ROLE_SLAVE;
+			}
 		}
 
 		@Override
@@ -1278,6 +1502,39 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 		@Override
 		void processOFRoleReply(OFRoleReply m) {
 			roleChanger.deliverRoleReply(m.getXid(), m.getRole());
+		}
+
+		@Override
+		void processOFRoleRequest(OFRoleRequest m) {
+			sendRoleRequest(m);
+		}
+
+		@Override
+		void processOFNiciraControllerRoleRequest(OFNiciraControllerRoleRequest m) {
+			OFControllerRole role;
+			switch (m.getRole()) {
+			case ROLE_MASTER:
+				role = OFControllerRole.ROLE_MASTER;
+				break;
+			case ROLE_SLAVE:
+				role = OFControllerRole.ROLE_SLAVE;
+				break;
+			case ROLE_OTHER:
+				role = OFControllerRole.ROLE_EQUAL;
+				break;
+			default:
+				log.error("Attempted to change to invalid Nicira role {}.", m.getRole().toString());
+				return;
+			}
+			/* 
+			 * This will get converted back to the correct factory of the switch later.
+			 * We will use OFRoleRequest though to simplify the API between OF versions.
+			 */
+			sendRoleRequest(OFFactories.getFactory(OFVersion.OF_13).buildRoleRequest()
+					.setGenerationId(U64.ZERO)
+					.setXid(m.getXid())
+					.setRole(role)
+					.build());
 		}
 
 		@Override
@@ -1376,7 +1633,16 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 	 */
 	void sendRoleRequestIfNotPending(OFControllerRole role) {
 		try {
-			roleChanger.sendRoleRequestIfNotPending(role);
+			roleChanger.sendRoleRequestIfNotPending(role, 0);
+		} catch (IOException e) {
+			log.error("Disconnecting switch {} due to IO Error: {}",
+					getSwitchInfoString(), e.getMessage());
+			mainConnection.disconnect();
+		}
+	}
+	void sendRoleRequestIfNotPending(OFRoleRequest role) {
+		try {
+			roleChanger.sendRoleRequestIfNotPending(role.getRole(), 0);
 		} catch (IOException e) {
 			log.error("Disconnecting switch {} due to IO Error: {}",
 					getSwitchInfoString(), e.getMessage());
@@ -1384,14 +1650,22 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 		}
 	}
 
-
 	/**
 	 * Forwards to RoleChanger. See there.
 	 * @param role
 	 */
 	void sendRoleRequest(OFControllerRole role) {
 		try {
-			roleChanger.sendRoleRequest(role);
+			roleChanger.sendRoleRequest(role, 0);
+		} catch (IOException e) {
+			log.error("Disconnecting switch {} due to IO Error: {}",
+					getSwitchInfoString(), e.getMessage());
+			mainConnection.disconnect();
+		}
+	}
+	void sendRoleRequest(OFRoleRequest role) {
+		try {
+			roleChanger.sendRoleRequest(role.getRole(), role.getXid());
 		} catch (IOException e) {
 			log.error("Disconnecting switch {} due to IO Error: {}",
 					getSwitchInfoString(), e.getMessage());
@@ -1444,6 +1718,10 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 		state.processOFMessage(m);
 	}
 
+	public void processWrittenOFMessage(OFMessage m) {
+		state.processWrittenOFMessage(m);
+	}
+
 	/**
 	 * Send the configuration requests to tell the switch we want full
 	 * packets
@@ -1483,6 +1761,17 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 				.setXid(handshakeTransactionIds--)
 				.build();
 		mainConnection.write(descStatsRequest);
+	}
+	
+	/**
+	 * send a table features request
+	 */
+	private void sendHandshakeTableFeaturesRequest() {
+		OFTableFeaturesStatsRequest tfsr = factory.buildTableFeaturesStatsRequest()
+				/* leave entries blank --> just ask, don't set */
+				.setXid(handshakeTransactionIds--)
+				.build();
+		mainConnection.write(tfsr);
 	}
 
 	OFSwitchHandshakeState getStateForTesting() {
@@ -1602,6 +1891,11 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 	@Override
 	public void messageReceived(IOFConnectionBackend connection, OFMessage m) {
 		processOFMessage(m);
+	}
+
+	@Override
+	public void messageWritten(IOFConnectionBackend connection, OFMessage m) {
+		processWrittenOFMessage(m);
 	}
 
 	@Override

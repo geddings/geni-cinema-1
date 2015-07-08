@@ -27,3 +27,6 @@ net.floodlightcontroller.firewall.Firewall
 net.floodlightcontroller.genicinema.GENICinemaManager
 net.floodlightcontroller.genicinema.physicalswitchpassthrough.PhysicalSwitchPassthrough
 net.floodlightcontroller.arprelay.ARPRelay
+net.floodlightcontroller.accesscontrollist.ACL
+net.floodlightcontroller.dhcpserver.DHCPServer
+net.floodlightcontroller.learningswitch.LearningSwitch

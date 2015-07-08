@@ -10,11 +10,13 @@ import java.util.Map;
 import org.projectfloodlight.openflow.protocol.OFFactories;
 import org.projectfloodlight.openflow.protocol.OFFactory;
 import org.projectfloodlight.openflow.protocol.OFFlowAdd;
+import org.projectfloodlight.openflow.protocol.OFFlowMod;
 import org.projectfloodlight.openflow.protocol.OFMeterBandStats;
 import org.projectfloodlight.openflow.protocol.OFMeterBandType;
 import org.projectfloodlight.openflow.protocol.OFMeterConfig;
 import org.projectfloodlight.openflow.protocol.OFMeterMod;
 import org.projectfloodlight.openflow.protocol.OFMeterModCommand;
+import org.projectfloodlight.openflow.protocol.OFMeterStatsRequest;
 import org.projectfloodlight.openflow.protocol.OFOxmClass;
 import org.projectfloodlight.openflow.protocol.OFPortDesc;
 import org.projectfloodlight.openflow.protocol.OFSetConfig;
@@ -28,8 +30,10 @@ import org.projectfloodlight.openflow.protocol.OFTableModPropEvictionFlag;
 import org.projectfloodlight.openflow.protocol.OFVersion;
 import org.projectfloodlight.openflow.protocol.action.OFAction;
 import org.projectfloodlight.openflow.protocol.action.OFActionOutput;
+import org.projectfloodlight.openflow.protocol.action.OFActionPushVlan;
 import org.projectfloodlight.openflow.protocol.action.OFActionSetField;
 import org.projectfloodlight.openflow.protocol.action.OFActionSetNwSrc;
+import org.projectfloodlight.openflow.protocol.action.OFActions;
 import org.projectfloodlight.openflow.protocol.instruction.OFInstruction;
 import org.projectfloodlight.openflow.protocol.instruction.OFInstructionApplyActions;
 import org.projectfloodlight.openflow.protocol.instruction.OFInstructionClearActions;
@@ -37,12 +41,15 @@ import org.projectfloodlight.openflow.protocol.instruction.OFInstructionExperime
 import org.projectfloodlight.openflow.protocol.instruction.OFInstructionGotoTable;
 import org.projectfloodlight.openflow.protocol.instruction.OFInstructionMeter;
 import org.projectfloodlight.openflow.protocol.instruction.OFInstructionWriteActions;
+import org.projectfloodlight.openflow.protocol.instruction.OFInstructions;
 import org.projectfloodlight.openflow.protocol.match.Match;
 import org.projectfloodlight.openflow.protocol.match.MatchField;
 import org.projectfloodlight.openflow.protocol.meterband.OFMeterBand;
 import org.projectfloodlight.openflow.protocol.meterband.OFMeterBandDrop;
 import org.projectfloodlight.openflow.protocol.oxm.OFOxm;
 import org.projectfloodlight.openflow.protocol.oxm.OFOxmEthSrc;
+import org.projectfloodlight.openflow.protocol.oxm.OFOxms;
+import org.projectfloodlight.openflow.protocol.ver13.OFMeterModCommandSerializerVer13;
 import org.projectfloodlight.openflow.types.ArpOpcode;
 import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.EthType;
@@ -126,6 +133,41 @@ public class TestModule implements IFloodlightModule, IOFSwitchListener {
 	public void switchAdded(DatapathId switchId) {
 		OFFactory factory = switchService.getSwitch(switchId).getOFFactory();
 		
+		/*OFFlowAdd.Builder fab = factory.buildFlowAdd();
+		fab.setMatch(factory.buildMatch().setExact(MatchField.ETH_TYPE, EthType.IPv4)
+				.setMasked(MatchField.IPV4_SRC, IPv4Address.of("10.0.123.1"), IPv4Address.of("255.255.0.255"))
+				.build());
+		fab.setBufferId(OFBufferId.NO_BUFFER);
+		if (switchId.equals(DatapathId.of(1)))
+		switchService.getSwitch(switchId).write(fab.build());*/
+		
+		OFFactory f =factory;
+        Match.Builder mb =f.buildMatch();
+        mb.setExact(MatchField.ETH_SRC, MacAddress.of(2));
+        Match m=mb.build();
+        ArrayList<OFAction> actionList = new ArrayList<OFAction>();
+        OFActions actions = f.actions();
+        OFActionPushVlan vlan =actions.pushVlan(EthType.of(0x8100));
+        actionList.add(vlan);
+
+
+        OFOxms oxms =f.oxms();
+        OFActionSetField vlanid=actions.buildSetField().setField(oxms.buildVlanVid().setValue(OFVlanVidMatch.ofVlan(10)).build()).build();
+        actionList.add(vlanid);
+        OFInstructions inst=f.instructions(); 
+        OFInstructionApplyActions apply=inst.buildApplyActions().setActions(actionList).build();
+        ArrayList<OFInstruction> instList= new ArrayList<OFInstruction>();
+        instList.add(apply);
+        OFFlowMod.Builder fmb = factory.buildFlowAdd();
+        OFFlowMod msg = fmb.setPriority(32769)
+        .setMatch(m)
+        .setInstructions(instList)
+        .setOutPort(OFPort.of(1))
+        .build();
+
+        switchService.getSwitch(switchId).write(msg);
+		
+		
 		/*
 		 * An attempt at meters, but they aren't supported anywhere, yet... 
 		 * OFMeterBand mb = factory.meterBands().buildDrop()
@@ -134,12 +176,13 @@ public class TestModule implements IFloodlightModule, IOFSwitchListener {
 				.build();
 		ArrayList<OFMeterBand> mbl = new ArrayList<OFMeterBand>();
 		mbl.add(mb);
-		
+				
 		OFMeterMod mm = factory.buildMeterMod()
 				.setMeters(mbl)
 				.setMeterId(1)
-				.setCommand(0)
-				.build(); */
+				.setCommand(OFMeterModCommandSerializerVer13.ADD_VAL) 
+				.build(); 
+		// This is a bug. You should be able to directly do OFMeterModCommand.ADD */
 		
 		/*HashSet<OFTableConfig> tblCfg = new HashSet<OFTableConfig>();
 		tblCfg.add(OFTableConfig.TABLE_MISS_CONTROLLER);
