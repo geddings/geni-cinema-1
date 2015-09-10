@@ -23,6 +23,7 @@ public class Aggregate {
 	private Map<Node, ArrayDeque<OFGroup>> availableOFGroupsPerSortNode;
 
 	private Map<Node, Boolean> isNodeConnected;
+	private Map<Node, Boolean> hasNodeBeenFlushed;
 
 	private static final int MAX_GROUPS = 10;
 
@@ -39,6 +40,10 @@ public class Aggregate {
 		this.vlcsVMs = vlcsVMs;
 		this.availableOFGroupsPerSortNode = groupsPerSortNode;
 		this.isNodeConnected = isNodeConnected;
+		this.hasNodeBeenFlushed = new HashMap<Node, Boolean>(isNodeConnected.size());
+		for (Node n : this.isNodeConnected.keySet()) { /* Set all these to false initially -- we only create an aggregate at the beginning of time */
+			hasNodeBeenFlushed.put(n, false);
+		}
 	}
 
 	public String getName() {
@@ -136,6 +141,22 @@ public class Aggregate {
 		}
 	}
 	
+	public boolean hasBeenFlushed(DatapathId dpid) {
+		Node foundNode = null;
+		for (Node node : hasNodeBeenFlushed.keySet()) {
+			if (node.getSwitchDpid().equals(dpid)) {
+				foundNode = node;
+				break;
+			}
+		}
+
+		if (foundNode == null) {
+			return false;
+		} else {
+			return isNodeConnected.get(foundNode).booleanValue();
+		}
+	}
+	
 	public boolean allSwitchesConnected() {
 		for (Boolean connected : isNodeConnected.values()) {
 			if (connected.booleanValue() == false) {
@@ -145,6 +166,11 @@ public class Aggregate {
 		return true;
 	}
 
+	/**
+	 * Sets node connected flag. Does NOT set flushed flag
+	 * @param dpid
+	 * @return
+	 */
 	public boolean switchConnected(DatapathId dpid) {
 		Node foundNode = null;
 		for (Node node : isNodeConnected.keySet()) {
@@ -158,6 +184,30 @@ public class Aggregate {
 			return false;
 		} else {
 			isNodeConnected.put(foundNode, true);
+			return true;
+		}
+	}
+	
+	/**
+	 * Indicate that we have flushed the switch.
+	 * This can be checked later to aid in conditional
+	 * switch flushes.
+	 * @param dpid
+	 * @return
+	 */
+	public boolean switchFlushed(DatapathId dpid) {
+		Node foundNode = null;
+		for (Node node : hasNodeBeenFlushed.keySet()) {
+			if (node.getSwitchDpid().equals(dpid)) {
+				foundNode = node;
+				break;
+			}
+		}
+
+		if (foundNode == null) {
+			return false;
+		} else {
+			hasNodeBeenFlushed.put(foundNode, true);
 			return true;
 		}
 	}

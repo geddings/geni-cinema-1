@@ -39,7 +39,6 @@ import org.projectfloodlight.openflow.types.OFBufferId;
 import org.projectfloodlight.openflow.types.OFGroup;
 import org.projectfloodlight.openflow.types.OFPort;
 import org.projectfloodlight.openflow.types.TransportPort;
-import org.projectfloodlight.openflow.types.U16;
 import org.restlet.data.ClientInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -110,7 +109,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	private volatile static int clientIdGenerator = 0;
 	private volatile static int channelIdGenerator = -1; /* Start at -1 so that the first "default" Channel is 0 */
 	private volatile static int groupIDGenerator = 0;
-	
+
 	/* Only add the default channel once, even if something strange happens and a switch disconnects and reconnects. */
 	private volatile static boolean defaultChannelAdded = false;
 
@@ -267,7 +266,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		vlcStreamsPerEgressGateway.put(egress_gw, new ArrayList<VLCStreamServer>());
 		switchToEgressGatewayBindings.put(ovs_switch, egress_gw);
 
-		*
+		 *
 		 * Switch 2
 		 */
 		Node ovs_switch = new Node.NodeBuilder()
@@ -346,7 +345,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		egws.add(egress_gw);
 		vlcStreamsPerEgressGateway.put(egress_gw, new ArrayList<VLCStreamServer>());
 		switchToEgressGatewayBindings.put(ovs_switch, egress_gw); 
-		
+
 		/*
 		 * Switch 6
 		 */
@@ -470,7 +469,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				log.debug("Got PI. DPID {}, Port {}", sw.getId().toString(), ((OFPacketIn) msg).getInPort());
 			}
 		}
-		
+
 		return Command.CONTINUE;
 	}
 
@@ -481,18 +480,6 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	@Override
 	public void switchAdded(DatapathId switchId) {
 		/*
-		 * Add OFGroups to switch if it's a "sort" switch.
-		 */
-		log.trace("Switch {} connected. Checking if it's a sort switch.", switchId.toString());
-		initializeSortSwitchOFGroups(switchService.getSwitch(switchId));
-
-		log.trace("Switch {} connected. Removing any existing UDP flows if it's a GENI Cinema switch.", switchId.toString());
-		removeExistingUDPFlows(switchService.getSwitch(switchId));
-
-		log.trace("Switch {} connected. Adding FLOOD flows if it's in the root tree.", switchId.toString());
-		initializeRootSwitch(switchService.getSwitch(switchId));
-
-		/*
 		 * For all aggregates, find the switch and set it as connected.
 		 * switchConnected(DatapathId) will set the switch as connected if
 		 * it exists in the Aggregate's configuration (lists of sort and 
@@ -500,14 +487,38 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * be made.
 		 */
 		for (Aggregate aggregate : aggregates) {
+			boolean flushed = aggregate.hasBeenFlushed(switchId);
 			boolean result = aggregate.switchConnected(switchId);
-			if (result) {
+			if (result) { /* switch is known and flag was set */
 				log.debug("Switch {} connected in Aggregate {}.", switchId.toString(), aggregate.getName());
+				
+				/*
+				 * Add OFGroups to switch if it's a "sort" switch AND if we haven't already.
+				 */
+				if (!flushed) {
+					log.trace("Switch {} connected. Checking if it's a sort switch.", switchId.toString());
+					initializeSortSwitchOFGroups(switchService.getSwitch(switchId));
+
+					log.trace("Switch {} connected. Removing any existing UDP flows if it's a GENI Cinema switch.", switchId.toString());
+					removeExistingUDPFlows(switchService.getSwitch(switchId));
+
+					log.trace("Switch {} connected. Adding FLOOD flows if it's in the root tree.", switchId.toString());
+					initializeRootSwitch(switchService.getSwitch(switchId));
+					
+					log.trace("Switch {} connected. Adding low priority UDP drop flows if it's a gatekeeper switch.", switchId.toString());
+					initializeGatekeeperSwitch(switchService.getSwitch(switchId));
+					
+					log.trace("Switch {} has been flushed.", switchId.toString());
+					aggregate.switchFlushed(switchId);
+				} else {
+					log.warn("Switch {} reconnected. Check control network.", switchId.toString());
+				}
+				break;
 			} else {
 				log.debug("Switch {} does not belong to Aggregate {}.", switchId.toString(), aggregate.getName());
 			}
 		}
-
+		
 		boolean readyToRock = true;
 		for (Aggregate aggregate : aggregates) {
 			if (aggregate.allSwitchesConnected() == false) {
@@ -561,7 +572,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 	@Override
 	public synchronized ArrayList<Map<String, String>> getChannels() {
 		ArrayList<Map<String, String>> response = new ArrayList<Map<String, String>>();
-		
+
 		for (Aggregate aggregate : aggregates) {
 			if (!aggregate.allSwitchesConnected()) {
 				Map<String, String> keyValue = new HashMap<String, String>(2);
@@ -570,7 +581,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 				response.add(keyValue);
 				return response;
 			}
-			
+
 			ArrayList<Channel> channels = channelsPerAggregate.get(aggregate.getName());
 			if (channels == null) {
 				// no-op; skip to next aggregate
@@ -639,7 +650,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		String json_clientId = "";
 
 		Map<String, String> response = new HashMap<String, String>();
-		
+
 		/*
 		 * Verify the switches are connected to the controller.
 		 */
@@ -652,7 +663,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		}
 
 		try {
-			jp = f.createJsonParser(json);
+			jp = f.createParser(json);
 			jp.nextToken();
 			if (jp.getCurrentToken() != JsonToken.START_OBJECT) {
 				throw new IOException("Expected START_OBJECT");
@@ -755,7 +766,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		ChannelBuilder cb = new ChannelBuilder();
 
 		Map<String, String> response = new HashMap<String, String>();
-		
+
 		/*
 		 * Verify the switches are connected to the controller.
 		 */
@@ -789,7 +800,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 
 		int reqFields = 0;
 		try {
-			jp = f.createJsonParser(json);
+			jp = f.createParser(json);
 			jp.nextToken();
 			if (jp.getCurrentToken() != JsonToken.START_OBJECT) {
 				throw new IOException("Expected START_OBJECT");
@@ -936,7 +947,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		String json_channelId = "";
 
 		Map<String, String> response = new HashMap<String, String>();
-		
+
 		/*
 		 * Verify the switches are connected to the controller.
 		 */
@@ -950,7 +961,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 
 		int reqFields = 0;
 		try {
-			jp = f.createJsonParser(json);
+			jp = f.createParser(json);
 			jp.nextToken();
 			if (jp.getCurrentToken() != JsonToken.START_OBJECT) {
 				throw new IOException("Expected START_OBJECT");
@@ -1070,7 +1081,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		String json_viewPass = "";
 
 		Map<String, String> response = new HashMap<String, String>();
-		
+
 		/*
 		 * Verify the switches are connected to the controller.
 		 */
@@ -1097,7 +1108,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		}
 
 		try {
-			jp = f.createJsonParser(json);
+			jp = f.createParser(json);
 			jp.nextToken();
 			if (jp.getCurrentToken() != JsonToken.START_OBJECT) {
 				throw new IOException("Expected START_OBJECT");
@@ -1203,7 +1214,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		} else {
 			existingStream = null;
 		}
-		
+
 		/*
 		 * If client ID was provided but the client was not found,
 		 * report an error, since the web server is in an inconsistent
@@ -1393,7 +1404,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		String json_description = "";
 		String json_name = "";
 		String json_channelId = "";
-		
+
 		boolean gotAdminPass = false;
 		boolean gotChannelId = false;
 		boolean gotNewAdminPass = false;
@@ -1402,7 +1413,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		boolean gotNewViewPass = false;
 
 		Map<String, String> response = new HashMap<String, String>();
-		
+
 		/*
 		 * Verify the switches are connected to the controller.
 		 */
@@ -1415,7 +1426,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		}
 
 		try {
-			jp = f.createJsonParser(json);
+			jp = f.createParser(json);
 			jp.nextToken();
 			if (jp.getCurrentToken() != JsonToken.START_OBJECT) {
 				throw new IOException("Expected START_OBJECT");
@@ -1876,7 +1887,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		 * (1) determine the quickest/best/closest route to an ingress GW?
 		 * (2) balance between the closest ingress GW and the most lightly-loaded?
 		 */
-		
+
 		return lightestGW;
 	}
 
@@ -2132,6 +2143,58 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		if (flowDelete != null) {
 			log.debug("Writing OFFlowDelete to switch {}.", sw.getId().toString());
 			sw.write(flowDelete);
+		}
+	}
+	
+	/**
+	 * We need to insert a relatively low priority flow on each ingress VLC server's
+	 * OVS node, which we will call the "gatekeeper" switch (as it allows or denies
+	 * UDP video streams into our network). This is to prevent any VLC server processes
+	 * from leaking undesired UDP traffic into the network, or even worse, up to the
+	 * controller via the table-miss flow. (That's a ton of traffic and dangerous on
+	 * the control plane.) This flow will stop any and all UDP packets that aren't
+	 * matched by a higher priority flow from going past the gatekeeper switch, either
+	 * to the controller or into the network.
+	 * 
+	 * We use PRIORITY_LOW for this flow; all stream-specific UDP allow/deny flows use
+	 * a priority of PRIORITY_MAX
+	 * 
+	 * @param sw
+	 */
+	private void initializeGatekeeperSwitch(IOFSwitch sw) {
+		boolean found = false;
+		OFFlowAdd flowAdd = null;
+		for (Aggregate aggregate : aggregates) {
+			ArrayList<Node> aggSwitches = aggregate.getSwitches();
+			ArrayList<Server> aggServers = aggregate.getServers();
+
+			for (Server server : aggServers) {
+				aggSwitches.add(server.getOVSNode()); /* we're narrowing our list of switches to just those on ingress VLC servers */
+			}
+
+			for (Node node : aggSwitches) {
+				if (node.getSwitchDpid().equals(sw.getId())) { /* guaranteed to be an ingress VLC server switch at this point (i.e. a gatekeeper switch) */
+					log.debug("Found Node with matching DPID {} in Aggregate {}. Adding low priority UDP drop flow for switch.", sw.getId().toString(), aggregate.getName());
+					OFFactory factory = sw.getOFFactory();
+					Match.Builder mb = factory.buildMatch();
+					flowAdd = factory.buildFlowAdd()
+							.setMatch(mb.setExact(MatchField.ETH_TYPE, EthType.IPv4)
+									.setExact(MatchField.IP_PROTO, IpProtocol.UDP)
+									.setExact(MatchField.IN_PORT, node.getIngressPort()) /* gatekeeper switch only has a single ingress port */
+									.build())
+							.setBufferId(OFBufferId.NO_BUFFER)
+							.setPriority(FlowModUtils.PRIORITY_LOW) /* lower priority than any other specific-port UDP flow inserted later (PRIORITY_MAX) */
+							.build();
+					found = true;
+					break;
+				}
+			}
+			if (found) break; // not sure if the first break will break all loops or just the internal one...
+		}
+
+		if (flowAdd != null) {
+			log.debug("Writing OFFlowAdd to switch {}.", sw.getId().toString());
+			sw.write(flowAdd);
 		}
 	}
 

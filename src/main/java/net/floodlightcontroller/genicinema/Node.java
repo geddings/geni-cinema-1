@@ -15,6 +15,7 @@ import org.projectfloodlight.openflow.types.OFPort;
  */
 public class Node {
 	private DatapathId ofSwitch;
+	boolean flowsCleared;
 	private ArrayList<OFPort> ingressSwitchPort;
 	private ArrayList<OFPort> egressSwitchPort;
 	
@@ -27,7 +28,7 @@ public class Node {
 	public DatapathId getSwitchDpid() {
 		return ofSwitch;
 	}
-	
+		
 	public OFPort getIngressPort() {
 		return ingressSwitchPort.get(0);
 	}
