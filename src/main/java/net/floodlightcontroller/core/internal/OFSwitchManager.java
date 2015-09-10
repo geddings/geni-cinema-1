@@ -118,7 +118,7 @@ public class OFSwitchManager implements IOFSwitchManager, INewOFConnectionListen
 	private ConcurrentHashMap<DatapathId, OFSwitchHandshakeHandler> switchHandlers;
 	private ConcurrentHashMap<DatapathId, IOFSwitchBackend> switches;
 	private ConcurrentHashMap<DatapathId, IOFSwitch> syncedSwitches;
-
+	private Set<DatapathId> pastSwitches;
 
 	private ISwitchDriverRegistry driverRegistry;
 
@@ -184,9 +184,9 @@ public class OFSwitchManager implements IOFSwitchManager, INewOFConnectionListen
 			addUpdateToQueue(new SwitchUpdate(dpid, SwitchUpdateType.REMOVED));
 			oldSw.disconnect();
 		}
-
+		
 		/*
-		 * Set other config options for this switch.
+		 * Set some other config options for this switch.
 		 */
 		if (sw.getOFFactory().getVersion().compareTo(OFVersion.OF_13) >= 0) {
 			if (forwardToControllerFlowsUpToTableByDpid.containsKey(sw.getId())) {
@@ -504,6 +504,7 @@ public class OFSwitchManager implements IOFSwitchManager, INewOFConnectionListen
 	public IOFSwitchBackend getOFSwitchInstance(IOFConnectionBackend connection,
 			SwitchDescription description,
 			OFFactory factory, DatapathId datapathId) {
+		
 		return this.driverRegistry.getOFSwitchInstance(connection, description, factory, datapathId);
 	}
 
@@ -676,6 +677,8 @@ public class OFSwitchManager implements IOFSwitchManager, INewOFConnectionListen
 		driverRegistry = new NaiveSwitchDriverRegistry(this);
 
 		this.switchListeners = new CopyOnWriteArraySet<IOFSwitchListener>();
+		
+		this.pastSwitches = new HashSet<DatapathId>();
 
 		/* TODO @Ryan
 		try {
@@ -1010,7 +1013,7 @@ public class OFSwitchManager implements IOFSwitchManager, INewOFConnectionListen
 			
 			ChannelPipelineFactory pfact = useSsl ? new OpenflowPipelineFactory(this, floodlightProvider.getTimer(), this, debugCounterService, ofBitmaps, defaultFactory, keyStore, keyStorePassword) :
 				new OpenflowPipelineFactory(this, floodlightProvider.getTimer(), this, debugCounterService, ofBitmaps, defaultFactory);
-
+			
 			bootstrap.setPipelineFactory(pfact);
 			InetSocketAddress sa = new InetSocketAddress(floodlightProvider.getOFPort());
 			final ChannelGroup cg = new DefaultChannelGroup();
