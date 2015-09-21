@@ -153,7 +153,7 @@ public class Aggregate {
 		if (foundNode == null) {
 			return false;
 		} else {
-			return isNodeConnected.get(foundNode).booleanValue();
+			return hasNodeBeenFlushed.get(foundNode).booleanValue();
 		}
 	}
 	
