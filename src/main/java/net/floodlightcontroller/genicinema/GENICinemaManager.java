@@ -501,7 +501,7 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 
 					log.trace("Switch {} connected. Removing any existing UDP flows if it's a GENI Cinema switch.", switchId.toString());
 					removeExistingUDPFlows(switchService.getSwitch(switchId));
-
+					
 					log.trace("Switch {} connected. Adding FLOOD flows if it's in the root tree.", switchId.toString());
 					initializeRootSwitch(switchService.getSwitch(switchId));
 					
@@ -2165,14 +2165,14 @@ public class GENICinemaManager implements IFloodlightModule, IOFSwitchListener, 
 		boolean found = false;
 		OFFlowAdd flowAdd = null;
 		for (Aggregate aggregate : aggregates) {
-			ArrayList<Node> aggSwitches = aggregate.getSwitches();
+			ArrayList<Node> gatekeeperSwitches = new ArrayList<Node>(); /* start with nothing */
 			ArrayList<Server> aggServers = aggregate.getServers();
 
 			for (Server server : aggServers) {
-				aggSwitches.add(server.getOVSNode()); /* we're narrowing our list of switches to just those on ingress VLC servers */
+				gatekeeperSwitches.add(server.getOVSNode()); /* we're narrowing our list of switches to just those on ingress VLC servers */
 			}
 
-			for (Node node : aggSwitches) {
+			for (Node node : gatekeeperSwitches) {
 				if (node.getSwitchDpid().equals(sw.getId())) { /* guaranteed to be an ingress VLC server switch at this point (i.e. a gatekeeper switch) */
 					log.debug("Found Node with matching DPID {} in Aggregate {}. Adding low priority UDP drop flow for switch.", sw.getId().toString(), aggregate.getName());
 					OFFactory factory = sw.getOFFactory();
